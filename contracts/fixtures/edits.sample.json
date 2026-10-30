@@ -1,0 +1,52 @@
+{
+ "version": 1,
+ "visible": [
+  "t1",
+  "t2b"
+ ],
+ "groups": [],
+ "splits": [
+  {
+   "trackId": "t2",
+   "frame": 45
+  }
+ ],
+ "manual": [
+  {
+   "id": "m1",
+   "anchors": [
+    {
+     "frame": 45,
+     "box": [
+      200,
+      200,
+      40,
+      40
+     ]
+    }
+   ],
+   "trim": [
+    44,
+    46
+   ],
+   "deleted": false
+  },
+  {
+   "id": "m2",
+   "anchors": [
+    {
+     "frame": 10,
+     "box": [
+      10,
+      10,
+      40,
+      40
+     ]
+    }
+   ],
+   "trim": null,
+   "deleted": true
+  }
+ ],
+ "reviewed": []
+}
