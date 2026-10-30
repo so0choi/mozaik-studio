@@ -258,6 +258,14 @@ export function Studio() {
     },
     [tracks, updateEdits],
   );
+  const showSuspects = useCallback(() => {
+    if (!tracks) return;
+    updateEdits((e) =>
+      buildPeople(tracks, e)
+        .filter((p) => p.suspect && !p.visible)
+        .reduce((acc, p) => setPersonVisible(acc, p, true), e),
+    );
+  }, [tracks, updateEdits]);
   const toggleSelect = useCallback((key: string) => {
     setSelected((s) => {
       const n = new Set(s);
@@ -519,6 +527,7 @@ export function Studio() {
           onMerge={merge}
           onCancelSelect={clearSelect}
           onRename={rename}
+          onShowSuspects={showSuspects}
         />
         <section className="right" aria-label="미리보기와 검수">
           <PlayerOverlay

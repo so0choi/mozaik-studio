@@ -84,3 +84,28 @@ describe('edit operations', () => {
     expect(ps.map((p) => [p.key, p.label])).toEqual([['g1', '진행자'], ['t1b', '인물 1b'], ['t2', '인물 2'], ['t3', '인물 3']]);
   });
 });
+
+describe('people suspect', () => {
+  const withSuspect = (ids: string[]): TracksDoc => ({
+    ...tracksDoc,
+    tracks: tracksDoc.tracks.map((t) => (ids.includes(t.id) ? { ...t, suspect: true } : t)),
+  });
+
+  it('absent field -> suspect false', () => {
+    expect(people(tracksDoc, emptyEdits()).every((p) => p.suspect === false)).toBe(true);
+  });
+
+  it('orders suspects last, keeping relative order', () => {
+    const ps = people(withSuspect(['t1']), emptyEdits());
+    expect(ps.map((p) => p.key)).toEqual(['t2', 't3', 't1']);
+    expect(ps.map((p) => p.suspect)).toEqual([false, false, true]);
+  });
+
+  it('group is suspect only if every piece is suspect', () => {
+    const e = groupPersons(tracksDoc, emptyEdits(), ['t1', 't3']);
+    const mixed = people(withSuspect(['t1']), e).find((p) => p.key === 'g1')!;
+    expect(mixed.suspect).toBe(false);
+    const all = people(withSuspect(['t1', 't3']), e).find((p) => p.key === 'g1')!;
+    expect(all.suspect).toBe(true);
+  });
+});

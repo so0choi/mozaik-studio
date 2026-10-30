@@ -11,6 +11,8 @@ export interface Track {
   segments: [number, number][];
   frames: Record<string, Box>;
   scores?: Record<string, number>;
+  /** worker hint: a second look found no face here (may be food/hand/texture). Still masked by default. */
+  suspect?: boolean;
 }
 
 export interface TracksDoc {
@@ -106,4 +108,6 @@ export interface Person {
   appearSec: number;
   segments: [number, number][];
   isGroup: boolean;
+  /** true only if every piece's track is suspect */
+  suspect: boolean;
 }
