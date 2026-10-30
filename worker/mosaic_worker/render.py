@@ -66,6 +66,7 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
         cmd += ["-i", str(src), "-map", "0:v", "-map", "1:a", "-c:a", "copy", "-shortest"]
     cmd += [
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-bf", "0", "-pix_fmt", "yuv420p",
+        "-g", str(meta.fps),  # same keyframe grid as normalized.mp4: fast seeking in the download too
         "-movflags", "+faststart", "-f", "mp4", str(tmp),
     ]
 

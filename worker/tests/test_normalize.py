@@ -77,3 +77,21 @@ def test_parse_probe_variants():
     assert (p.width, p.height, p.has_audio) == (1920, 1080, True)
     assert p.fps == pytest.approx(29.97)
     assert p.duration == pytest.approx(62.5) and p.start == pytest.approx(0.5)
+
+
+def _keyframe_count(path):
+    import re
+    import subprocess
+
+    proc = subprocess.run(
+        [nz.ffmpeg_bin(), "-hide_banner", "-skip_frame", "nokey", "-i", str(path), "-fps_mode", "passthrough", "-f", "null", "-"],
+        capture_output=True, text=True, errors="replace",
+    )
+    return int(re.findall(r"frame=\s*(\d+)", proc.stderr)[-1])
+
+
+def test_normalized_video_has_a_keyframe_every_second(tmp_path):
+    # the studio seeks a lot; sparse keyframes (x264 default: 250 frames) make every seek decode seconds of video
+    src = make_video(tmp_path / "original.mp4", _frames(90), fps=30)
+    nz.normalize(src, tmp_path)
+    assert _keyframe_count(tmp_path / "normalized.mp4") >= 3  # 0s, 1s, 2s
