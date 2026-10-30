@@ -1,0 +1,44 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  api:
+    build: ./apps/api
+    environment:
+      DATA_DIR: /data
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      STUDIO_USERS: ${STUDIO_USERS:?set STUDIO_USERS in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - jobs-data:/data
+    depends_on:
+      - redis
+    ports:
+      - "3000:3000"
+
+  worker:
+    build: ./worker
+    environment:
+      DATA_DIR: /data
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - jobs-data:/data
+    depends_on:
+      - redis
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  jobs-data:
+  redis-data:

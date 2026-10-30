@@ -76,6 +76,23 @@ describe('render gate, manual, output (A3)', () => {
     expect(await ctx.redis.llen('queue:render')).toBe(3);
   });
 
+  it('a pending re-render hides the previous output until the worker picks it up', async () => {
+    await putEdits({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1', 'r2'] });
+    seed(ctx, id, { 'output.mp4': Buffer.from('old-output') });
+    await ctx.redis.hset(`job:${id}:status`, { state: 'rendered', progress: '100', updatedAt: new Date(Date.now() - 1000).toISOString() });
+    expect((await post('/render')).status).toBe(202);
+    const job = (await request(ctx.server).get(`/api/jobs/${id}`).set('Cookie', cookie)).body;
+    expect(job.state).toBe('rendering');
+    expect(job.progress).toBe(0);
+    expect(job.hasOutput).toBe(false);
+    expect((await request(ctx.server).get(`/api/jobs/${id}/output`).set('Cookie', cookie)).status).toBe(404);
+    // worker finishes: newer status update wins again
+    await ctx.redis.hset(`job:${id}:status`, { state: 'rendered', updatedAt: new Date(Date.now() + 1000).toISOString() });
+    const done = (await request(ctx.server).get(`/api/jobs/${id}`).set('Cookie', cookie)).body;
+    expect(done.state).toBe('rendered');
+    expect(done.hasOutput).toBe(true);
+  });
+
   it('rendering state with no request key (e.g. after API restart) is still 409', async () => {
     await putEdits({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1', 'r2'] });
     await ctx.redis.hset(`job:${id}:status`, { state: 'rendering' });
