@@ -2,25 +2,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api, manualDocOf, outputUrl, thumbUrl, videoUrl } from '../lib/api';
 import {
+  addManualAnchor,
   addManualEdit,
+  deleteManual,
   emptyEdits,
   groupPersons,
   markReviewed,
   nextManualId,
   normalizeEdits,
   renameGroup,
+  setManualTrim,
   setPersonVisible,
   splitTrack,
 } from '../lib/edits';
+import { enlargeBox } from '../lib/geometry';
 import { maskBoxes } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
 import type { Box, Edits, Job, ManualDoc, ManualState, ReviewItem, TracksDoc } from '../lib/types';
 import { BoxTool } from '../studio/BoxTool';
-import { PeopleGallery } from '../studio/PeopleGallery';
+import { ManualBoxCard, manualRange } from '../studio/ManualBoxCard';
+import { PeopleList } from '../studio/PeopleList';
 import { PlayerOverlay, type Highlight } from '../studio/PlayerOverlay';
 import { requiredItems } from '../lib/reviewRequired';
-import { ReviewQueue } from '../studio/ReviewQueue';
+import { ReviewCard, ReviewUpcoming, optionCount, type ReviewStage } from '../studio/ReviewCard';
 import { Timeline } from '../studio/Timeline';
 import { Header } from './Header';
 
@@ -30,6 +35,15 @@ const EDITABLE = ['ready', 'rendering', 'rendered'];
 interface BoxMode {
   initial: Box | null;
   reviewId: string | null;
+  /** set when redrawing an existing manual box (adds an anchor instead of a new box) */
+  manualId?: string;
+}
+
+/** Keyboard events from these targets belong to the control itself. */
+function isTyping(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (!el || !el.tagName) return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
 }
 
 export function Studio() {
@@ -50,6 +64,8 @@ export function Studio() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [boxMode, setBoxMode] = useState<BoxMode | null>(null);
+  const [stageState, setStageState] = useState<{ id: string | null; stage: ReviewStage }>({ id: null, stage: 'ask' });
+  const [manualOpen, setManualOpen] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [renderPhase, setRenderPhase] = useState<'idle' | 'rendering'>('idle');
@@ -188,8 +204,7 @@ export function Studio() {
   const resolved = useMemo(() => reviewItems.filter((i) => reviewed.has(i.id)), [reviewItems, reviewed]);
   const current = peopleList.find((p) => p.key === currentKey) ?? null;
   const trackingCount = Object.values(manualState).filter((s) => s === 'tracking').length;
-  const failedCount = edits.manual.filter((m) => !m.deleted && manualState[m.id] === 'failed').length;
-  const manualCount = edits.manual.filter((m) => !m.deleted).length;
+  const manualList = edits.manual.filter((m) => !m.deleted);
 
   useEffect(() => {
     setSelected((s) => {
@@ -225,7 +240,25 @@ export function Studio() {
     [current, pieceById],
   );
 
-  const activeItem = unresolved.find((i) => i.id === activeId) ?? null;
+  // the focused item; falls back to the first unresolved one (e.g. after the active item was resolved elsewhere).
+  // A crossing being split stays active even if the split already made it non-required.
+  const activeItem = useMemo(() => {
+    const inQueue = unresolved.find((i) => i.id === activeId);
+    if (inQueue) return inQueue;
+    if (stageState.stage === 'split' && stageState.id === activeId) {
+      const it = reviewItems.find((i) => i.id === activeId);
+      if (it) return it;
+    }
+    return unresolved[0] ?? null;
+  }, [unresolved, activeId, stageState, reviewItems]);
+  const stage: ReviewStage = activeItem && stageState.id === activeItem.id ? stageState.stage : 'ask';
+  const setStage = useCallback(
+    (st: ReviewStage) => {
+      if (activeItem) setStageState({ id: activeItem.id, stage: st });
+    },
+    [activeItem],
+  );
+  const activeIndex = activeItem ? unresolved.findIndex((i) => i.id === activeItem.id) : -1;
   const highlight: Highlight | null = useMemo(
     () => (activeItem ? { box: activeItem.box, startFrame: activeItem.startFrame, endFrame: activeItem.endFrame } : null),
     [activeItem],
@@ -326,41 +359,167 @@ export function Studio() {
     (itemId: string) => {
       const it = reviewItems.find((i) => i.id === itemId);
       setActiveId(itemId);
+      setManualOpen(null);
       if (it) seek(it.startFrame);
     },
     [reviewItems, seek],
   );
+  /** Move focus to whatever follows `itemId` in the queue (call before/with the edit that removes it). */
+  const advanceFrom = useCallback(
+    (itemId: string) => {
+      if (activeItem?.id !== itemId) return;
+      const idx = unresolved.findIndex((i) => i.id === itemId);
+      const rest = unresolved.filter((i) => i.id !== itemId);
+      const nxt = rest[Math.max(0, Math.min(idx, rest.length - 1))];
+      setActiveId(nxt?.id ?? null);
+      if (nxt) seek(nxt.startFrame);
+    },
+    [activeItem, unresolved, seek],
+  );
   const resolveItem = useCallback(
     (itemId: string) => {
-      const idx = unresolved.findIndex((i) => i.id === itemId);
       updateEdits((e) => markReviewed(e, itemId));
-      if (activeId === itemId) {
-        const rest = unresolved.filter((i) => i.id !== itemId);
-        const nxt = rest[Math.min(idx, rest.length - 1)];
-        setActiveId(nxt?.id ?? null);
-        if (nxt) seek(nxt.startFrame);
-      }
+      advanceFrom(itemId);
     },
-    [unresolved, activeId, updateEdits, seek],
+    [advanceFrom, updateEdits],
+  );
+  const stepItem = useCallback(
+    (dir: 1 | -1) => {
+      if (unresolved.length < 2 || !activeItem) return;
+      const idx = Math.max(0, activeIndex);
+      selectItem(unresolved[(idx + dir + unresolved.length) % unresolved.length].id);
+    },
+    [unresolved, activeItem, activeIndex, selectItem],
   );
   const addBoxFor = useCallback(
-    (itemId: string) => {
+    (itemId: string, enlarge = false) => {
       const it = reviewItems.find((i) => i.id === itemId);
-      if (!it) return;
+      if (!it || !tracks) return;
       setActiveId(itemId);
+      setManualOpen(null);
       seek(it.startFrame);
       pause();
-      setBoxMode({ initial: it.box, reviewId: itemId });
+      setBoxMode({ initial: enlarge ? enlargeBox(it.box, 1.3, tracks.width, tracks.height) : it.box, reviewId: itemId });
     },
-    [reviewItems, seek],
+    [reviewItems, seek, tracks],
+  );
+  /** people that own a piece of any of these base track ids */
+  const peopleOfTracks = useCallback(
+    (trackIds: string[]) =>
+      peopleList.filter((p) => p.trackIds.some((pid) => trackIds.includes(pieceById.get(pid)?.trackId ?? ''))),
+    [peopleList, pieceById],
+  );
+  /** "얼굴이 아니에요": explicit user action that unmasks the person(s) owning the item's track. */
+  const notAFace = useCallback(
+    (item: ReviewItem) => {
+      const owners = peopleOfTracks(item.trackIds.slice(0, 1));
+      if (owners.length) updateEdits((e) => owners.reduce((acc, p) => setPersonVisible(acc, p, true), e));
+      advanceFrom(item.id);
+    },
+    [peopleOfTracks, updateEdits, advanceFrom],
+  );
+  /** "두 사람이 바뀌었어요": split both tracks at the current frame, then let the user pick each piece. */
+  const swapSplit = useCallback(
+    (item: ReviewItem) => {
+      if (!tracks) return;
+      updateEdits((e) =>
+        item.trackIds.reduce((acc, tid) => {
+          const t = tracks.tracks.find((x) => x.id === tid);
+          if (!t) return acc;
+          const fs = Object.keys(t.frames).map(Number);
+          const min = Math.min(...fs);
+          const max = Math.max(...fs);
+          if (min + 1 > max) return acc;
+          return splitTrack(acc, tid, Math.max(min + 1, Math.min(max, frame)));
+        }, e),
+      );
+      setStage('split');
+    },
+    [tracks, frame, updateEdits, setStage],
+  );
+  const chooseOption = useCallback(
+    (n: number) => {
+      if (!activeItem || stage !== 'problem' || n < 1 || n > optionCount(activeItem.type)) return;
+      if (activeItem.type === 'crossing') {
+        if (n === 1) swapSplit(activeItem);
+        else addBoxFor(activeItem.id);
+      } else if (n === 1) addBoxFor(activeItem.id);
+      else if (n === 2) notAFace(activeItem);
+      else addBoxFor(activeItem.id, true);
+    },
+    [activeItem, stage, swapSplit, addBoxFor, notAFace],
   );
 
   // ---- manual box ----
+  const manualFirstFrame = (mid: string) => {
+    const m = editsRef.current.manual.find((x) => x.id === mid);
+    const doc = manualDocs[mid];
+    const fs = doc ? Object.keys(doc.frames).map(Number) : [];
+    const all = fs.length ? fs : (m?.anchors.map((a) => a.frame) ?? []);
+    return all.length ? Math.min(...all) : 0;
+  };
+  const openManual = (mid: string) => {
+    setManualOpen(mid);
+    seek(manualFirstFrame(mid));
+  };
+  const manualOpenEdit = manualOpen ? edits.manual.find((m) => m.id === manualOpen && !m.deleted) ?? null : null;
+  const trimFrom = () => {
+    if (!manualOpenEdit) return;
+    const r = manualRange(manualOpenEdit, manualDocs[manualOpenEdit.id]);
+    const end = Math.max(frame, r ? r[1] : frame);
+    updateEdits((e) => setManualTrim(e, manualOpenEdit.id, [frame, end]));
+  };
+  const trimTo = () => {
+    if (!manualOpenEdit) return;
+    const r = manualRange(manualOpenEdit, manualDocs[manualOpenEdit.id]);
+    const start = Math.min(frame, r ? r[0] : frame);
+    updateEdits((e) => setManualTrim(e, manualOpenEdit.id, [start, frame]));
+  };
+  const redrawManual = () => {
+    if (!manualOpenEdit) return;
+    const doc = manualDocs[manualOpenEdit.id];
+    const box = doc?.frames[String(frame)] ?? manualOpenEdit.anchors.find((a) => a.frame === frame)?.box ?? null;
+    pause();
+    setBoxMode({ initial: box, reviewId: null, manualId: manualOpenEdit.id });
+  };
+  const removeManual = () => {
+    if (!manualOpenEdit) return;
+    if (!window.confirm(`수동 박스 ${manualOpenEdit.id}을 삭제할까요?`)) return;
+    const mid = manualOpenEdit.id;
+    updateEdits((e) => deleteManual(e, mid));
+    setManualOpen(null);
+    setBoxMode((b) => (b?.manualId === mid ? null : b));
+  };
+  const toggleBox = useCallback(() => {
+    if (boxMode) setBoxMode(null);
+    else {
+      pause();
+      setBoxMode({ initial: null, reviewId: null });
+    }
+  }, [boxMode]);
+
   const confirmBox = async (box: Box) => {
     const mode = boxMode;
     setBoxMode(null);
-    const mid = nextManualId(editsRef.current);
     const at = frame;
+    if (mode?.manualId) {
+      const mid = mode.manualId;
+      const others = (editsRef.current.manual.find((m) => m.id === mid)?.anchors ?? [])
+        .map((a) => a.frame)
+        .filter((f) => f !== at);
+      updateEdits((e) => addManualAnchor(e, mid, { frame: at, box }));
+      setManualState((s) => ({ ...s, [mid]: 'tracking' }));
+      await flush();
+      try {
+        await api.postManual(id, { manualId: mid, anchor: { frame: at, box }, otherAnchors: others });
+      } catch (e) {
+        setManualState((s) => ({ ...s, [mid]: 'failed' }));
+        setNotice(e instanceof ApiError ? e.message : '추적을 요청하지 못했습니다.');
+      }
+      return;
+    }
+    const mid = nextManualId(editsRef.current);
+    if (mode?.reviewId) setStageState({ id: mode.reviewId, stage: 'ask' });
     updateEdits((e) => addManualEdit(e, { id: mid, anchors: [{ frame: at, box }], trim: null, deleted: false }));
     setManualState((s) => ({ ...s, [mid]: 'tracking' }));
     if (mode?.reviewId) setReviewManual((r) => ({ ...r, [mode.reviewId!]: mid }));
@@ -432,6 +591,65 @@ export function Studio() {
     }, 2000);
     return () => clearInterval(iv);
   }, [renderPhase, id]);
+
+  // ---- keyboard (one listener; always calls the latest handler) ----
+  const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
+  keyHandler.current = (e) => {
+    if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const target = e.target as HTMLElement | null;
+    if (boxMode) {
+      if (e.key === 'Escape') {
+        setBoxMode(null);
+        e.preventDefault();
+      }
+      return;
+    }
+    const onControl = !!target?.closest?.('button, a, [role="switch"], [role="checkbox"], [role="slider"]');
+    const itemTracking = !!activeItem && manualState[reviewManual[activeItem.id]] === 'tracking';
+    const canAct = !!activeItem && !manualOpenEdit && !itemTracking;
+    let handled = true;
+    switch (e.key) {
+      case 'Enter':
+        if (onControl || !canAct) return;
+        if (stage === 'ask') resolveItem(activeItem!.id);
+        else if (stage === 'split') resolveItem(activeItem!.id);
+        else handled = false;
+        break;
+      case 'x':
+      case 'X':
+        if (!canAct || stage !== 'ask') return;
+        setStage('problem');
+        break;
+      case '1':
+      case '2':
+      case '3':
+        if (!canAct || stage !== 'problem' || Number(e.key) > optionCount(activeItem!.type)) return;
+        chooseOption(Number(e.key));
+        break;
+      case 'Escape':
+        if (manualOpenEdit) setManualOpen(null);
+        else if (activeItem && stage !== 'ask') setStage('ask');
+        else return;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        if (target?.closest?.('[role="slider"]') || unresolved.length < 2) return;
+        stepItem(e.key === 'ArrowRight' ? 1 : -1);
+        break;
+      case 'b':
+      case 'B':
+        toggleBox();
+        break;
+      default:
+        return;
+    }
+    if (handled) e.preventDefault();
+  };
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => keyHandler.current(e);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
 
   // ---- render ----
   if (loadError) {
@@ -518,8 +736,8 @@ export function Studio() {
           </button>
         </div>
       </Header>
-      <main id="main">
-        <PeopleGallery
+      <main id="main" className="studio">
+        <PeopleList
           people={peopleList}
           selected={selected}
           currentKey={currentKey}
@@ -532,7 +750,7 @@ export function Studio() {
           onRename={rename}
           onShowSuspects={showSuspects}
         />
-        <section className="right" aria-label="미리보기와 검수">
+        <section className="center" aria-label="미리보기">
           <PlayerOverlay
             src={videoUrl(id)}
             videoRef={videoRef}
@@ -563,16 +781,12 @@ export function Studio() {
             <button
               type="button"
               className="btn-ghost"
+              aria-label="박스 그리기"
+              aria-keyshortcuts="B"
               aria-pressed={!!boxMode}
-              onClick={() => {
-                if (boxMode) setBoxMode(null);
-                else {
-                  pause();
-                  setBoxMode({ initial: null, reviewId: null });
-                }
-              }}
+              onClick={toggleBox}
             >
-              박스 그리기
+              박스 그리기 <kbd>B</kbd>
             </button>
             <button
               type="button"
@@ -583,16 +797,6 @@ export function Studio() {
             >
               여기서 분할
             </button>
-            <div className="chip" data-testid="manual-chip">
-              <b>수동 박스 {manualCount}</b>
-              {trackingCount > 0 && (
-                <>
-                  {' · 추적 중 '}
-                  <i className="spin" />
-                </>
-              )}
-            </div>
-            {failedCount > 0 && <div className="chip fail">추적 실패 · 구간을 직접 지정하세요</div>}
             <div className="legend" aria-hidden="true">
               <span>
                 <i /> 확인 필요
@@ -602,6 +806,29 @@ export function Studio() {
               </span>
             </div>
           </div>
+          {manualList.length > 0 && (
+            <div className="mbrow" data-testid="manual-chip">
+              <span className="mbl">수동 박스</span>
+              {manualList.map((m) => (
+                <button
+                  type="button"
+                  key={m.id}
+                  className={`mbchip${manualOpen === m.id ? ' on' : ''}`}
+                  aria-pressed={manualOpen === m.id}
+                  onClick={() => openManual(m.id)}
+                >
+                  수동 박스 {m.id}
+                  {manualState[m.id] === 'tracking' && (
+                    <>
+                      {' · 추적 중 '}
+                      <i className="spin" />
+                    </>
+                  )}
+                  {manualState[m.id] === 'failed' && ' · 실패'}
+                </button>
+              ))}
+            </div>
+          )}
           <Timeline
             person={current}
             fps={fps}
@@ -609,24 +836,66 @@ export function Studio() {
             frame={frame}
             unresolved={unresolved}
             resolved={resolved}
-            activeId={activeId}
+            activeId={activeItem?.id ?? null}
             thumbSrc={thumbSrc}
             onSeek={seek}
             onSelectItem={selectItem}
           />
-          <ReviewQueue
-            items={unresolved}
+        </section>
+        <aside className="rightcol" aria-label="검수">
+          {manualOpenEdit ? (
+            <ManualBoxCard
+              manual={manualOpenEdit}
+              doc={manualDocs[manualOpenEdit.id]}
+              state={manualState[manualOpenEdit.id]}
+              fps={fps}
+              drawing={boxMode?.manualId === manualOpenEdit.id}
+              onTrimFrom={trimFrom}
+              onTrimTo={trimTo}
+              onTrimClear={() => updateEdits((e) => setManualTrim(e, manualOpenEdit.id, null))}
+              onRedraw={redrawManual}
+              onDelete={removeManual}
+              onClose={() => setManualOpen(null)}
+            />
+          ) : (
+            <ReviewCard
+              item={activeItem}
+              position={Math.max(0, activeIndex) + 1}
+              total={Math.max(unresolved.length, 1)}
+              stage={stage}
+              fps={fps}
+              who={activeItem ? whoOf(activeItem) : ''}
+              manualState={activeItem ? manualState[reviewManual[activeItem.id]] : undefined}
+              splitPeople={activeItem ? peopleOfTracks(activeItem.trackIds) : []}
+              onOk={() => activeItem && resolveItem(activeItem.id)}
+              onProblem={() => setStage('problem')}
+              onBack={() => setStage('ask')}
+              onOption={chooseOption}
+              onSeek={() => activeItem && seek(activeItem.startFrame)}
+              onPrev={() => stepItem(-1)}
+              onNext={() => stepItem(1)}
+              onTogglePerson={toggleVisible}
+              onSplitDone={() => activeItem && resolveItem(activeItem.id)}
+            />
+          )}
+          <ReviewUpcoming
+            items={unresolved.filter((i) => i.id !== activeItem?.id)}
+            total={unresolved.length}
             done={resolved}
             hiddenCount={hiddenCount}
-            activeId={activeId}
             fps={fps}
             whoOf={whoOf}
-            manualStateOf={(rid) => manualState[reviewManual[rid]]}
             onSelect={selectItem}
-            onOk={resolveItem}
-            onAddBox={addBoxFor}
           />
-        </section>
+          <div className="hints">
+            <span><kbd>Enter</kbd>괜찮음</span>
+            <span><kbd>X</kbd>문제 있음</span>
+            <span><kbd>1–3</kbd>해결 방법</span>
+            <span><kbd>Esc</kbd>뒤로</span>
+            <span><kbd>←</kbd><kbd>→</kbd>이동</span>
+            <span><kbd>B</kbd>박스 그리기</span>
+          </div>
+        </aside>
       </main>
       <div className="sr" aria-live="polite">
         {notice || noteText}
