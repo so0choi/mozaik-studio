@@ -189,3 +189,62 @@
 ## 실행 순서
 
 Task 0 → (W1–W6 ∥ A1–A3 ∥ F1–F4) → I1. 세 트랙은 §3 계약과 Task 0 픽스처로만 연결된다.
+
+---
+
+## Eng Review (plan-eng-review, 2026-10-30)
+
+사용자 지시("결정사항 다 권장으로 진행하고 내 답변 기다리지 마라")에 따라 모든 결정은 권장안 자동 채택. 질문 원장(ledger) 대신 아래 표에 결정과 근거를 기록한다.
+
+### Scope Challenge
+- 신규 파일 약 40개, 서비스 3개(api/worker/web) + Redis. 복잡도 기준(8파일)을 넘지만 스펙이 요구하는 최소 구성이다. 축소안(최소 데모 M2까지만)은 성공 기준 2를 완화하므로 채택하지 않음.
+- **결정 S1 (자동 채택): 범위 유지(FULL_REVIEW), 구현 순서는 최소 데모 경로(W1–W4, A1–A2, F1–F3) 우선, 그다음 W5·A3·F4.**
+
+### Findings and accepted remedies
+| # | 심각도 | 신뢰도 | 위치 | 문제 | 채택한 수정 |
+|---|---|---|---|---|---|
+| E1 | CRITICAL | 8 | spec §3.2 `BRPOP` | 워커가 메시지를 꺼낸 뒤 죽으면 작업이 사라지고 화면은 영원히 처리 중 | `BLMOVE queue:* → processing:worker`로 꺼내고 완료 후 `LREM`. 시작 시 `processing:worker`의 항목을 원래 큐로 되돌림 (Task W6 테스트 추가) |
+| E2 | INFORMATIONAL | 7 | spec §3.2 상태 해시 | Redis가 재시작되면 상태가 사라져 작업이 `queued`로 보임 | 워커가 같은 상태를 `/data/jobs/{id}/status.json`에도 기록, API는 해시가 없으면 파일로 대체 (W6, A2 테스트 추가) |
+| E3 | INFORMATIONAL | 7 | plan Task W6 | 분석 중인 긴 작업 뒤에 수동 박스 전파가 줄 서서 "추적 중"이 수 분 지속 | 워커가 큐를 `propagate → render → analyze` 우선순위로 확인 (W6 테스트: 세 큐에 메시지가 있으면 propagate 먼저) |
+| E4 | INFORMATIONAL | 8 | plan Task A2 업로드 | 2GB 업로드를 메모리에 받으면 API가 죽음 | multer `diskStorage`로 작업 디렉터리에 직접 스트리밍, 실패 시 디렉터리 정리 (A2 테스트: 업로드 실패 후 고아 디렉터리 없음) |
+| E5 | INFORMATIONAL | 7 | plan Task W2 썸네일 | 썸네일을 위해 영상을 한 번 더 디코딩 | 검출 패스 중 트랙별 최고 `score×면적` 크롭과 2초 샘플을 메모리에 유지해 한 번에 기록 |
+| E6 | INFORMATIONAL | 6 | 로컬 Python 3.14 | opencv-contrib 휠이 3.14를 지원하는지 미확인. 로컬/컨테이너 결과가 달라질 수 있음 | 워커 테스트는 워커 Docker 이미지(python:3.12-slim) 안에서 실행하는 것을 정식 경로로 함. 로컬 실행은 선택 |
+| E7 | INFORMATIONAL | 6 | spec §5 인증 | `JWT_SECRET` 기본값이 있으면 운영에 그대로 나갈 위험 | `JWT_SECRET` 미설정 시 API 기동 실패, 쿠키 `SameSite=Lax`, `Secure`는 `COOKIE_SECURE=true`일 때 |
+| E8 | INFORMATIONAL | 5 | spec §3.3 `frames` 맵 | 30분 영상·트랙 다수면 tracks.json 수십 MB 가능 (Medium confidence, 실측 필요) | 프로토타입은 유지. M1 측정 항목에 tracks.json 크기 추가, 10MB 넘으면 구간 배열 압축으로 전환하는 TODO |
+
+### Test review (경로별 커버리지)
+```
+업로드 ─▶ 정규화 ─▶ 검출 ─▶ 추적 ─▶ review/썸네일 ─▶ 갤러리 편집 ─▶ 렌더 ─▶ 다운로드
+ A2       W1        W2      W2      W2              F1/F3          W3/W4    A3
+ [+E4]    [VFR,무음] [0개]   [교차,gap,fps] [병합]   [같은 픽스처]    [격자,오디오]
+                                   수동 박스: F4 ─▶ A3 ─▶ W5 [재기준 범위]
+                                   큐/장애: W6 [E1 복구, E2 파일 상태, E3 우선순위]
+```
+갭: 실제 1080p 5분 영상 처리 시간·tracks.json 크기는 자동 테스트 대상이 아니다 → I1에서 수동 측정.
+
+### Performance
+- CPU YuNet 1080p는 프레임당 수십 ms 예상(미측정). 목표 15분/5분 영상. 넘으면 분석 해상도 720p 축소(스펙 §4.2 규칙 확장).
+
+### NOT in scope
+R-Live, R-Recog, 번호판·배경 블러, 미디버스 연동, 일괄 처리, 사내 SSO 연동(가드 교체 지점만 둠).
+
+### Failure modes
+critical gaps 0 (E1을 수정 채택으로 해소).
+
+### Outside Voice
+건너뜀 — 사용자가 자리를 비운 상태에서 시간 절약을 위해 생략. 권장 기본값(실행)과 다른 선택이므로 여기 명시한다.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Outside Review | — | Independent 2nd opinion | 0 | skipped | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES OPEN (all remedies accepted) | 8 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **OUTSIDE COVERAGE:** none, Outside Voice skipped (user away).
+- **VERDICT:** ENG reviewed with all remedies accepted by user delegation — ready to implement.
+
+NO UNRESOLVED DECISIONS
