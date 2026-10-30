@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Post, Put, Req, Res } from '@nestjs/common';
 import * as fs from 'fs';
 import { JobsService } from './jobs.service';
 import { receiveUpload } from './upload';
@@ -84,8 +84,9 @@ export class JobsController {
   }
 
   @Get(':id/output')
-  output(@Req() req: any, @Res() res: any, @Param('id') id: string) {
+  async output(@Req() req: any, @Res() res: any, @Param('id') id: string) {
     const row = this.jobs.getOwned(id, req.user.username);
+    if (await this.jobs.renderPending(id)) throw new NotFoundException('렌더가 끝나지 않았습니다.');
     res.download(this.jobs.videoPath(id, 'output.mp4'), this.jobs.outputName(row));
   }
 

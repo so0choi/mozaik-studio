@@ -71,16 +71,26 @@ export class JobsService {
     };
   }
 
+  /** A render request newer than the worker's last status update is still waiting in queue:render. */
+  async renderPending(id: string, s?: Status): Promise<boolean> {
+    const status = s ?? (await this.status(id));
+    const requestedAt = Number(await this.redis.get(renderRequestedKey(id))) || 0;
+    const updatedAt = status.updatedAt ? Date.parse(status.updatedAt) || 0 : 0;
+    return requestedAt > updatedAt;
+  }
+
   async toJob(row: JobRow): Promise<Job> {
     const s = await this.status(row.id);
+    // While a re-render is queued, the previous output is stale: report it as rendering with no output.
+    const pending = await this.renderPending(row.id, s);
     return {
       id: row.id,
       filename: row.filename,
       createdAt: row.createdAt,
-      state: s.state,
-      progress: s.progress,
-      error: s.error,
-      hasOutput: this.storage.exists(this.storage.file(row.id, 'output.mp4')),
+      state: pending ? 'rendering' : s.state,
+      progress: pending ? 0 : s.progress,
+      error: pending ? null : s.error,
+      hasOutput: !pending && this.storage.exists(this.storage.file(row.id, 'output.mp4')),
     };
   }
 
@@ -155,10 +165,7 @@ export class JobsService {
       if (pending > 0) throw new ConflictException(`확인 필요 항목 ${pending}건이 남았습니다.`);
 
       const status = await this.status(id);
-      const requestedAt = Number(await this.redis.get(renderRequestedKey(id))) || 0;
-      const updatedAt = status.updatedAt ? Date.parse(status.updatedAt) || 0 : 0;
-      // A request newer than the worker's last status update is still waiting in queue:render.
-      if (status.state === 'rendering' || requestedAt > updatedAt) {
+      if (status.state === 'rendering' || (await this.renderPending(id, status))) {
         throw new ConflictException('이미 렌더 중입니다.');
       }
       if (status.state !== 'ready' && status.state !== 'rendered') {
