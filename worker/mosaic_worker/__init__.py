@@ -1,0 +1,1 @@
+"""Face Mosaic Studio worker."""
