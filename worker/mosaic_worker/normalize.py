@@ -123,6 +123,8 @@ def normalize(src: Path, job_dir: Path) -> Meta:
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         # no B-frames: otherwise the mp4 edit list makes the first presentation time 0.04-0.07s, not 0
         "-bf", "0", "-pix_fmt", "yuv420p",
+        # a keyframe every second: the studio seeks constantly, and x264's default (250 frames) makes each seek slow
+        "-g", str(fps),
         *(["-c:a", "aac", "-b:a", "128k"] if info.has_audio else ["-an"]),
         "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
         "-f", "mp4", str(tmp),
