@@ -1,0 +1,61 @@
+{
+ "_comment": "mask boxes after applying edits.sample.json + manual.sample.json to tracks.sample.json; each box is [x,y,w,h,blockSize]; boxes sorted by (x,y)",
+ "0": [
+  [
+   300,
+   120,
+   80,
+   80,
+   10
+  ]
+ ],
+ "44": [
+  [
+   200,
+   200,
+   40,
+   40,
+   8
+  ],
+  [
+   300,
+   120,
+   80,
+   80,
+   10
+  ],
+  [
+   500,
+   50,
+   48,
+   64,
+   8
+  ]
+ ],
+ "45": [
+  [
+   200,
+   200,
+   40,
+   40,
+   8
+  ],
+  [
+   500,
+   50,
+   48,
+   64,
+   8
+  ]
+ ],
+ "47": [
+  [
+   500,
+   50,
+   48,
+   64,
+   8
+  ]
+ ],
+ "89": []
+}

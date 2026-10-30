@@ -1,0 +1,19 @@
+{
+ "items": [
+  {
+   "id": "r1",
+   "type": "low_confidence",
+   "trackIds": [
+    "t3"
+   ],
+   "startFrame": 30,
+   "endFrame": 45,
+   "box": [
+    500,
+    50,
+    48,
+    64
+   ]
+  }
+ ]
+}
