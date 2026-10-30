@@ -25,6 +25,18 @@ describe('Login', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('아이디 또는 비밀번호가 맞지 않습니다.');
   });
 
+  it('skips the login page when the server has login turned off', async () => {
+    installFetch((c) => {
+      if (c.path === '/api/auth/me') return { body: { username: 'demo', authDisabled: true } };
+      if (c.path === '/api/jobs') return { body: [] };
+      return undefined;
+    });
+    renderApp('/login');
+    await waitFor(() => expect(screen.queryByRole('button', { name: '로그인' })).not.toBeInTheDocument());
+    expect(await screen.findByText('영상 올리기')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '로그아웃' })).not.toBeInTheDocument();
+  });
+
   it('route guard redirects to /login when /api/auth/me is 401', async () => {
     const calls = installFetch((c) => (c.path === '/api/auth/me' ? { status: 401, body: { message: 'x' } } : undefined));
     renderApp('/');

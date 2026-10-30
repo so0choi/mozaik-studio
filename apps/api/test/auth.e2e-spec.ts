@@ -63,3 +63,38 @@ describe('config', () => {
     expect(() => loadConfig({ DATA_DIR: '/tmp/x' } as any)).toThrow(/JWT_SECRET/);
   });
 });
+
+describe('auth with AUTH_DISABLED=true', () => {
+  it('lets requests through as AUTH_ANON_USER without a cookie, and jobs belong to that user', async () => {
+    const ctx = await createApp({ AUTH_DISABLED: 'true', AUTH_ANON_USER: 'alice' });
+    try {
+      const me = await request(ctx.server).get('/api/auth/me');
+      expect(me.status).toBe(200);
+      expect(me.body).toEqual({ username: 'alice', authDisabled: true });
+      const up = await request(ctx.server).post('/api/jobs').attach('file', Buffer.alloc(100), 'clip.mp4');
+      expect(up.status).toBe(201);
+      const list = await request(ctx.server).get('/api/jobs');
+      expect(list.body.map((j: any) => j.id)).toEqual([up.body.id]);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('defaults the anonymous user to guest', async () => {
+    const ctx = await createApp({ AUTH_DISABLED: 'true' });
+    try {
+      expect((await request(ctx.server).get('/api/auth/me')).body.username).toBe('guest');
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  it('keeps requiring login when AUTH_DISABLED is not "true"', async () => {
+    const ctx = await createApp({ AUTH_DISABLED: 'false' });
+    try {
+      expect((await request(ctx.server).get('/api/auth/me')).status).toBe(401);
+    } finally {
+      await ctx.close();
+    }
+  });
+});

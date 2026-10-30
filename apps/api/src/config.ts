@@ -11,6 +11,8 @@ export interface AppConfig {
   users: Map<string, string>;
   cookieSecure: boolean;
   maxUploadBytes: number;
+  /** Prototype switch: when set, every request runs as this user and no login is needed. */
+  anonUser: string | null;
 }
 
 export function parseUsers(raw: string | undefined): Map<string, string> {
@@ -39,5 +41,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     users: parseUsers(env.STUDIO_USERS),
     cookieSecure: env.COOKIE_SECURE === 'true',
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES) || 2 * 1024 * 1024 * 1024,
+    anonUser: env.AUTH_DISABLED === 'true' ? env.AUTH_ANON_USER || 'guest' : null,
   };
 }

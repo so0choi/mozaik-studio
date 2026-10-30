@@ -55,7 +55,7 @@ export const api = {
   login: (username: string, password: string) =>
     request<unknown>('/api/auth/login', json('POST', { username, password })),
   logout: () => request<unknown>('/api/auth/logout', { method: 'POST' }),
-  me: () => request<{ username: string }>('/api/auth/me'),
+  me: () => request<{ username: string; authDisabled?: boolean }>('/api/auth/me'),
 
   listJobs: () => request<Job[]>('/api/jobs'),
   getJob: (id: string) => request<Job>(`/api/jobs/${id}`),
