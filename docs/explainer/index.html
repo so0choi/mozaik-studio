@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>얼굴 모자이크 스튜디오 해설</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f6f2;
+  --surface: #ffffff;
+  --surface-2: #f0eee8;
+  --text: #1d1e22;
+  --muted: #5d606b;
+  --line: #d9d6cd;
+  --accent: #2f5bd3;
+  --accent-soft: #e3eafc;
+  --web: #2f7d5b;   --web-soft: #dff1e8;
+  --api: #8a4fc4;   --api-soft: #efe4fa;
+  --worker: #c4612a; --worker-soft: #fbe7da;
+  --redis: #c23a3a; --redis-soft: #f9dfdf;
+  --vol: #6b6f7a;   --vol-soft: #e7e8eb;
+  --good: #2f7d5b;
+  --bad: #c23a3a;
+  --code-bg: #efede6;
+  --mosaic-a: #b9a48f; --mosaic-b: #8e7a66; --mosaic-c: #d1bea9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141519; --surface: #1c1e23; --surface-2: #23262c; --text: #e8e8ea; --muted: #a0a3ad; --line: #34373f;
+    --accent: #7b9cf5; --accent-soft: #23304f;
+    --web: #6cc79d; --web-soft: #1d3329; --api: #c49bf0; --api-soft: #2e2440; --worker: #f09a65; --worker-soft: #3a281c;
+    --redis: #f08080; --redis-soft: #3b2224; --vol: #aeb2bd; --vol-soft: #2a2d33; --good: #6cc79d; --bad: #f08080;
+    --code-bg: #262930; --mosaic-a: #7d6d5d; --mosaic-b: #5d5045; --mosaic-c: #9a8875;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141519; --surface: #1c1e23; --surface-2: #23262c; --text: #e8e8ea; --muted: #a0a3ad; --line: #34373f;
+  --accent: #7b9cf5; --accent-soft: #23304f;
+  --web: #6cc79d; --web-soft: #1d3329; --api: #c49bf0; --api-soft: #2e2440; --worker: #f09a65; --worker-soft: #3a281c;
+  --redis: #f08080; --redis-soft: #3b2224; --vol: #aeb2bd; --vol-soft: #2a2d33; --good: #6cc79d; --bad: #f08080;
+  --code-bg: #262930; --mosaic-a: #7d6d5d; --mosaic-b: #5d5045; --mosaic-c: #9a8875;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: 16px; line-height: 1.7; word-break: keep-all; overflow-wrap: break-word;
+}
+code { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; }
+code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+a { color: var(--accent); }
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 40px; max-width: 1200px; margin: 0 auto; padding: 32px 24px 80px; }
+nav.toc { position: sticky; top: 24px; align-self: start; font-size: 14px; }
+nav.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: s; }
+nav.toc li { counter-increment: s; }
+nav.toc a { display: block; padding: 5px 8px; border-radius: 6px; color: var(--muted); text-decoration: none; }
+nav.toc a::before { content: counter(s) ". "; color: var(--line); }
+nav.toc a:hover, nav.toc a.on { background: var(--surface-2); color: var(--text); }
+.toc-title { font-weight: 700; margin-bottom: 8px; }
+#themeBtn { margin-top: 16px; font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); cursor: pointer; }
+main { min-width: 0; }
+header.hero h1 { font-size: 34px; line-height: 1.3; margin: 0 0 8px; }
+header.hero p.lead { font-size: 18px; color: var(--muted); margin: 0 0 20px; max-width: 760px; }
+section { margin-top: 56px; }
+h2 { font-size: 24px; margin: 0 0 6px; padding-top: 8px; }
+h2 .num { color: var(--accent); margin-right: 6px; }
+h3 { font-size: 18px; margin: 28px 0 8px; }
+p.sub { color: var(--muted); margin: 0 0 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; margin: 16px 0; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+.callout.warn { border-color: var(--bad); background: var(--redis-soft); }
+.callout.ok { border-color: var(--good); background: var(--web-soft); }
+.files { font-size: 13.5px; color: var(--muted); margin-top: 10px; }
+.files code { font-size: 12.5px; }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 700; background: var(--surface-2); }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.tablewrap table th:first-child, .tablewrap table td:first-child { padding-left: 14px; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+.t-web { background: var(--web-soft); color: var(--web); }
+.t-api { background: var(--api-soft); color: var(--api); }
+.t-worker { background: var(--worker-soft); color: var(--worker); }
+.t-redis { background: var(--redis-soft); color: var(--redis); }
+.t-vol { background: var(--vol-soft); color: var(--vol); }
+svg { max-width: 100%; height: auto; display: block; }
+svg text { font-family: "Noto Sans KR", -apple-system, sans-serif; fill: var(--text); }
+svg .muted { fill: var(--muted); }
+svg .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin: 16px 0; }
+.diagram figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; }
+/* pipeline steps */
+.pipeline { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; counter-reset: st; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; position: relative; counter-increment: st; }
+.step::before { content: counter(st); position: absolute; top: -10px; left: -8px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; }
+.step h4 { margin: 0 0 4px; font-size: 15px; }
+.step p { margin: 4px 0 0; font-size: 13.5px; color: var(--muted); line-height: 1.55; }
+.step .tag { margin-top: 2px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14.5px; }
+.kv dt { font-weight: 700; }
+.kv dd { margin: 0; color: var(--muted); }
+/* IoU demo */
+.iou-demo { display: grid; grid-template-columns: 260px 1fr; gap: 20px; align-items: center; }
+.iou-demo input[type=range] { width: 100%; }
+.iou-val { font-size: 32px; font-weight: 700; font-family: "JetBrains Mono", monospace; }
+.verdict { font-weight: 700; }
+pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.55; margin: 12px 0; }
+pre code { background: none; padding: 0; font-size: inherit; }
+.big-num { font-size: 28px; font-weight: 700; font-family: "JetBrains Mono", monospace; }
+.stat { text-align: center; }
+.stat small { display: block; color: var(--muted); font-size: 13px; }
+ul.tight { margin: 8px 0; padding-left: 20px; }
+ul.tight li { margin: 3px 0; }
+footer { margin-top: 64px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; padding: 20px 16px 60px; gap: 8px; }
+  nav.toc { position: static; }
+  nav.toc ol { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pipeline { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .grid2, .grid3, .iou-demo { grid-template-columns: 1fr; }
+  header.hero h1 { font-size: 26px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <div class="toc-title">목차</div>
+  <ol>
+    <li><a href="#flow">전체 흐름</a></li>
+    <li><a href="#video">영상 기초</a></li>
+    <li><a href="#detect">얼굴 검출 (YuNet)</a></li>
+    <li><a href="#track">추적 (ByteTrack식)</a></li>
+    <li><a href="#mosaic">모자이크 렌더</a></li>
+    <li><a href="#review">검수·분할·수동 박스</a></li>
+    <li><a href="#queue">작업 큐와 렌더 게이트</a></li>
+    <li><a href="#glossary">용어집</a></li>
+  </ol>
+  <button id="themeBtn" type="button">테마 전환</button>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>얼굴 모자이크 스튜디오는 어떻게 동작하나</h1>
+  <p class="lead">영상 처리를 처음 보는 웹·백엔드 개발자를 위한 해설. 업로드한 영상이 모자이크된 결과 파일이 되기까지 어떤 서비스가 무엇을 하는지, 그 사이에 쓰인 영상·컴퓨터 비전 개념을 실제 코드 위치와 함께 정리했다.</p>
+  <div class="callout">
+    <strong>한 문장 요약:</strong> 워커가 영상을 일정한 프레임 간격으로 다시 만들고(정규화), 프레임마다 얼굴 위치를 찾은 뒤(검출), 같은 얼굴끼리 이어 "트랙"을 만든다(추적). 사용자는 브라우저에서 트랙 단위로 보이기/가리기를 고르고, 워커가 같은 규칙으로 픽셀화해 결과 영상을 만든다. <strong>기본값은 전부 가림</strong>이다.
+  </div>
+</header>
+
+<!-- ============================================================ 1 -->
+<section id="flow">
+  <h2><span class="num">1</span>전체 흐름</h2>
+  <p class="sub">서비스 4개와 공유 디렉터리 1개. 서로는 HTTP, Redis 리스트, 파일로만 이야기한다.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 900 330" role="img" aria-label="서비스 구성도">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+      </defs>
+      <!-- browser/web -->
+      <rect x="20" y="40" width="190" height="110" rx="10" fill="var(--web-soft)" stroke="var(--web)"/>
+      <text x="115" y="70" text-anchor="middle" font-weight="700" style="fill:var(--web)">web</text>
+      <text x="115" y="92" text-anchor="middle" font-size="13">React + Vite (nginx :8080)</text>
+      <text x="115" y="112" text-anchor="middle" font-size="12" class="muted">업로드 · 사람 카드 · 미리보기</text>
+      <text x="115" y="130" text-anchor="middle" font-size="12" class="muted">canvas 오버레이</text>
+      <!-- api -->
+      <rect x="320" y="40" width="200" height="110" rx="10" fill="var(--api-soft)" stroke="var(--api)"/>
+      <text x="420" y="70" text-anchor="middle" font-weight="700" style="fill:var(--api)">api</text>
+      <text x="420" y="92" text-anchor="middle" font-size="13">NestJS (:3000) + SQLite</text>
+      <text x="420" y="112" text-anchor="middle" font-size="12" class="muted">업로드 저장 · 상태 조회</text>
+      <text x="420" y="130" text-anchor="middle" font-size="12" class="muted">edits 검증 · 렌더 게이트</text>
+      <!-- redis -->
+      <rect x="640" y="40" width="230" height="110" rx="10" fill="var(--redis-soft)" stroke="var(--redis)"/>
+      <text x="755" y="70" text-anchor="middle" font-weight="700" style="fill:var(--redis)">Redis</text>
+      <text x="755" y="92" text-anchor="middle" font-size="11" class="mono">queue:analyze·render·propagate</text>
+      <text x="755" y="112" text-anchor="middle" font-size="12" class="mono">job:{id}:status (해시)</text>
+      <text x="755" y="130" text-anchor="middle" font-size="12" class="mono">processing:worker</text>
+      <!-- worker -->
+      <rect x="640" y="200" width="230" height="110" rx="10" fill="var(--worker-soft)" stroke="var(--worker)"/>
+      <text x="755" y="230" text-anchor="middle" font-weight="700" style="fill:var(--worker)">worker</text>
+      <text x="755" y="252" text-anchor="middle" font-size="13">Python · OpenCV · ffmpeg</text>
+      <text x="755" y="272" text-anchor="middle" font-size="12" class="muted">정규화 · 검출 · 추적 · 렌더</text>
+      <text x="755" y="290" text-anchor="middle" font-size="12" class="muted">CSRT 전파</text>
+      <!-- volume -->
+      <rect x="250" y="200" width="310" height="110" rx="10" fill="var(--vol-soft)" stroke="var(--vol)" stroke-dasharray="6 4"/>
+      <text x="405" y="230" text-anchor="middle" font-weight="700" style="fill:var(--vol)">공유 볼륨 /data/jobs/{id}/</text>
+      <text x="405" y="254" text-anchor="middle" font-size="12" class="mono">original.* · normalized.mp4 · meta.json</text>
+      <text x="405" y="274" text-anchor="middle" font-size="12" class="mono">tracks.json · review.json · thumbs/</text>
+      <text x="405" y="294" text-anchor="middle" font-size="12" class="mono">edits.json · manual/ · status.json · output.mp4</text>
+      <!-- arrows -->
+      <line x1="210" y1="95" x2="318" y2="95" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arr)"/>
+      <text x="264" y="86" text-anchor="middle" font-size="11" class="muted">/api (HTTP)</text>
+      <line x1="520" y1="85" x2="638" y2="85" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arr)"/>
+      <text x="579" y="78" text-anchor="middle" font-size="11" class="muted">LPUSH</text>
+      <line x1="638" y1="112" x2="522" y2="112" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arr)"/>
+      <text x="579" y="128" text-anchor="middle" font-size="11" class="muted">HGETALL 상태</text>
+      <line x1="755" y1="152" x2="755" y2="198" stroke="var(--muted)" stroke-width="1.6" marker-start="url(#arr)" marker-end="url(#arr)"/>
+      <text x="765" y="180" font-size="11" class="muted">LMOVE · HSET</text>
+      <line x1="640" y1="255" x2="562" y2="255" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arr)"/>
+      <text x="600" y="246" text-anchor="middle" font-size="11" class="muted">읽기/쓰기</text>
+      <line x1="420" y1="152" x2="420" y2="198" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arr)"/>
+      <text x="428" y="180" font-size="11" class="muted">업로드·edits 쓰기, 파일 서빙</text>
+    </svg>
+    <figcaption>API만 SQLite(작업 메타)에 쓴다. 워커는 파일과 Redis 상태만 쓴다. 두 언어가 같은 계약을 쓰도록 BullMQ 대신 Redis 리스트를 골랐다 (스펙 §2).</figcaption>
+  </figure>
+
+  <h3>단계별로 누가 무엇을 하나</h3>
+  <div class="pipeline">
+    <div class="step"><h4>업로드</h4><span class="tag t-web">web</span> <span class="tag t-api">api</span><p>multer <code>diskStorage</code>로 작업 디렉터리에 바로 스트리밍(2GB를 메모리에 올리지 않음). <code>queue:analyze</code>에 넣음.</p></div>
+    <div class="step"><h4>정규화</h4><span class="tag t-worker">worker</span><p>ffmpeg로 고정 프레임레이트 H.264/AAC, 첫 시각 0인 <code>normalized.mp4</code>와 <code>meta.json</code> 생성.</p></div>
+    <div class="step"><h4>검출</h4><span class="tag t-worker">worker</span><p>모든 프레임에 YuNet을 돌려 얼굴 박스 + 점수를 얻음.</p></div>
+    <div class="step"><h4>추적</h4><span class="tag t-worker">worker</span><p>프레임 사이 박스를 IoU로 이어 트랙(t1, t2…)을 만듦. 검출과 같은 디코딩 패스에서 실행.</p></div>
+    <div class="step"><h4>검수 항목·썸네일</h4><span class="tag t-worker">worker</span><p><code>review.json</code>(확인 필요), <code>thumbs/</code>(대표·2초 샘플), <code>tracks.json</code> 기록. 상태 <code>ready</code>.</p></div>
+    <div class="step"><h4>브라우저 편집</h4><span class="tag t-web">web</span> <span class="tag t-api">api</span><p>사람 카드 보임/가림, 묶기, 분할, 수동 박스. 500ms 디바운스로 <code>PUT /edits</code>. 미리보기는 canvas.</p></div>
+    <div class="step"><h4>렌더</h4><span class="tag t-api">api</span> <span class="tag t-worker">worker</span><p>확인 필요 0건일 때만 API가 <code>queue:render</code>에 넣음. 워커가 픽셀화 → ffmpeg 인코딩 + 오디오 복사.</p></div>
+    <div class="step"><h4>다운로드</h4><span class="tag t-api">api</span><p><code>rendered</code> 상태에서만 <code>GET /output</code>. 7일 뒤 자동 삭제.</p></div>
+  </div>
+  <p class="files">코드: 분석 전체는 <code>worker/mosaic_worker/jobs.py</code>의 <code>run_analyze()</code> → <code>normalize()</code> → <code>detect_and_track()</code>. 렌더는 <code>render.py</code>. API는 <code>apps/api/src/jobs/jobs.service.ts</code>, 웹 순수 로직은 <code>apps/web/src/lib/</code>.</p>
+
+  <h3>작업 상태 전이</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 900 130" role="img" aria-label="상태 전이">
+      <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+      <g font-size="13" text-anchor="middle">
+        <rect x="10" y="30" width="100" height="40" rx="20" fill="var(--surface-2)" stroke="var(--line)"/><text x="60" y="55" class="mono">queued</text>
+        <rect x="150" y="30" width="130" height="40" rx="20" fill="var(--worker-soft)" stroke="var(--worker)"/><text x="215" y="55" class="mono">normalizing</text>
+        <rect x="320" y="30" width="120" height="40" rx="20" fill="var(--worker-soft)" stroke="var(--worker)"/><text x="380" y="55" class="mono">analyzing</text>
+        <rect x="480" y="30" width="90" height="40" rx="20" fill="var(--web-soft)" stroke="var(--web)"/><text x="525" y="55" class="mono">ready</text>
+        <rect x="610" y="30" width="120" height="40" rx="20" fill="var(--worker-soft)" stroke="var(--worker)"/><text x="670" y="55" class="mono">rendering</text>
+        <rect x="770" y="30" width="110" height="40" rx="20" fill="var(--web-soft)" stroke="var(--web)"/><text x="825" y="55" class="mono">rendered</text>
+        <rect x="270" y="92" width="90" height="32" rx="16" fill="var(--redis-soft)" stroke="var(--redis)"/><text x="315" y="113" class="mono">failed</text>
+      </g>
+      <g stroke="var(--muted)" stroke-width="1.5" fill="none">
+        <line x1="110" y1="50" x2="148" y2="50" marker-end="url(#arr2)"/>
+        <line x1="280" y1="50" x2="318" y2="50" marker-end="url(#arr2)"/>
+        <line x1="440" y1="50" x2="478" y2="50" marker-end="url(#arr2)"/>
+        <line x1="570" y1="50" x2="608" y2="50" marker-end="url(#arr2)"/>
+        <line x1="730" y1="50" x2="768" y2="50" marker-end="url(#arr2)"/>
+        <path d="M670 30 C 640 0, 560 0, 535 28" marker-end="url(#arr2)" stroke-dasharray="4 3"/>
+        <path d="M230 70 L 300 92" marker-end="url(#arr2)"/>
+        <path d="M370 70 L 330 92" marker-end="url(#arr2)"/>
+      </g>
+      <text x="605" y="12" font-size="11" class="muted" text-anchor="middle">렌더 실패 → ready + error (재시도 가능)</text>
+    </svg>
+    <figcaption>분석 실패만 <code>failed</code>로 간다. 렌더 실패는 편집 결과를 버리지 않도록 <code>ready</code>로 되돌린다 (<code>main.py</code> <code>do_render()</code>).</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="video">
+  <h2><span class="num">2</span>따라가기 위해 필요한 영상 기초</h2>
+  <p class="sub">이 프로젝트의 모든 좌표와 편집은 "몇 번째 프레임인가"로 표현된다. 그래서 프레임 번호가 흔들리지 않게 만드는 것이 첫 단계다.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">프레임과 fps</h3>
+      <p>영상은 정지 이미지(프레임)의 연속이다. fps(frames per second)는 1초에 몇 장인지. 30fps 영상의 1.5초 지점은 45번째 프레임이다.</p>
+      <p>웹과 워커는 같은 공식으로 프레임 번호를 구한다: <code>frame = round(시각 × fps)</code>. 웹은 <code>apps/web/src/lib/frames.ts</code>의 <code>frameAt()</code>.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">코덱과 컨테이너</h3>
+      <p><strong>컨테이너</strong>(mp4, mov, mkv)는 상자, <strong>코덱</strong>(H.264, AAC)은 상자 안 내용물을 압축한 방식이다. 같은 .mp4라도 안의 코덱은 다를 수 있다.</p>
+      <p>정규화 결과는 항상 mp4 + H.264 영상 + AAC 오디오. 브라우저 <code>&lt;video&gt;</code>, OpenCV, ffmpeg가 모두 확실히 읽는 조합이다.</p>
+    </div>
+  </div>
+
+  <h3>왜 CFR로 바꾸나 (고정 vs 가변 프레임레이트)</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 880 170" role="img" aria-label="VFR과 CFR 비교">
+      <text x="10" y="32" font-size="13" font-weight="700">VFR (폰 화면녹화 등)</text>
+      <line x1="200" y1="28" x2="860" y2="28" stroke="var(--line)"/>
+      <g fill="var(--worker)">
+        <rect x="200" y="16" width="8" height="24" rx="2"/><rect x="226" y="16" width="8" height="24" rx="2"/><rect x="290" y="16" width="8" height="24" rx="2"/>
+        <rect x="302" y="16" width="8" height="24" rx="2"/><rect x="314" y="16" width="8" height="24" rx="2"/><rect x="420" y="16" width="8" height="24" rx="2"/>
+        <rect x="448" y="16" width="8" height="24" rx="2"/><rect x="530" y="16" width="8" height="24" rx="2"/><rect x="560" y="16" width="8" height="24" rx="2"/>
+        <rect x="575" y="16" width="8" height="24" rx="2"/><rect x="700" y="16" width="8" height="24" rx="2"/><rect x="790" y="16" width="8" height="24" rx="2"/><rect x="840" y="16" width="8" height="24" rx="2"/>
+      </g>
+      <text x="200" y="62" font-size="12" class="muted">프레임 간격이 들쭉날쭉 → "시각 × fps"가 실제 프레임 번호와 안 맞는다</text>
+      <text x="10" y="112" font-size="13" font-weight="700">CFR (정규화 후)</text>
+      <line x1="200" y1="108" x2="860" y2="108" stroke="var(--line)"/>
+      <g fill="var(--web)" id="cfrbars"></g>
+      <text x="200" y="142" font-size="12" class="muted">1/fps 간격이 일정 → 프레임 N의 시각 = N / fps. 웹·워커가 같은 프레임을 가리킨다</text>
+      <text x="200" y="160" font-size="12" class="muted mono">-vf "fps={round(src_fps)},setpts=PTS-STARTPTS"</text>
+    </svg>
+  </figure>
+  <p>가변 프레임레이트(VFR) 영상에서는 브라우저가 1.5초에 보여주는 프레임과 OpenCV가 45번째로 읽는 프레임이 다를 수 있다. 그러면 미리보기에서는 가려졌던 얼굴이 결과 영상에서는 한 프레임 어긋나 드러난다. 그래서 워커는 맨 처음 원본을 원본 fps의 반올림 값으로 다시 인코딩한다(고정 프레임레이트, CFR).</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">PTS는 0부터</h3>
+      <p><strong>PTS</strong>(presentation timestamp)는 프레임마다 붙은 "이 프레임을 몇 초에 보여줘라" 값이다. 원본 파일은 0.033초나 1.2초에서 시작하기도 한다.</p>
+      <ul class="tight">
+        <li><code>setpts=PTS-STARTPTS</code>, <code>asetpts=PTS-STARTPTS</code>: 영상·오디오 첫 시각을 0으로 당김</li>
+        <li><code>-avoid_negative_ts make_zero</code>: 음수 시각 방지</li>
+        <li><code>-bf 0</code>: B-프레임을 쓰지 않음. 쓰면 mp4 edit list 때문에 첫 표시 시각이 0.04–0.07초가 된다 (<code>normalize.py</code> 주석)</li>
+      </ul>
+      <p>그래야 브라우저의 <code>currentTime = 0</code>이 프레임 0이 된다.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">오디오는 normalized.mp4에서 복사</h3>
+      <p>렌더는 OpenCV로 프레임을 읽어 픽셀화한 뒤, 원시 픽셀을 ffmpeg stdin으로 흘려 새로 인코딩한다. OpenCV는 오디오를 다루지 않으므로 오디오는 따로 붙인다.</p>
+      <p>이때 <strong>원본이 아니라 <code>normalized.mp4</code>의 오디오</strong>를 <code>-c:a copy</code>(재인코딩 없이 그대로)로 넣는다. 정규화에서 영상과 오디오의 시작을 함께 0으로 맞췄기 때문에, 원본 오디오를 쓰면 시작 오프셋만큼 입 모양과 소리가 어긋날 수 있다 (리뷰 R3-9).</p>
+      <p class="files"><code>render.py</code>: <code>-i - (rawvideo) -i normalized.mp4 -map 0:v -map 1:a -c:a copy -shortest</code></p>
+    </div>
+  </div>
+  <div class="callout">
+    <strong>정규화에서 같이 하는 것:</strong> ffmpeg 출력을 파싱해 길이·해상도를 검사한다(30분, 4K 초과면 <code>failed</code> + "30분 이하, 4K 이하 영상만 지원합니다."). 결과는 <code>meta.json</code> <code>{fps, width, height, frameCount, durationSec, hasAudio}</code>. 오디오가 없으면 <code>-an</code>으로 만들고 렌더에서도 오디오 단계를 건너뛴다.
+  </div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section id="detect">
+  <h2><span class="num">3</span>얼굴 검출: YuNet</h2>
+  <p class="sub">"이 한 장의 이미지 안에서 얼굴이 어디 있나"만 답한다. 프레임끼리의 연결은 다음 절의 추적이 한다.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">무엇을 쓰나</h3>
+      <p>OpenCV의 <code>cv2.FaceDetectorYN</code>에 YuNet ONNX 모델(<code>face_detection_yunet_2023mar.onnx</code>)을 얹어 CPU로 돌린다. 작고 빠른 신경망 검출기다.</p>
+      <p>입력은 프레임 한 장, 출력은 얼굴마다 <code>[x, y, w, h, 눈·코·입 좌표 10개, score]</code>. 이 프로젝트는 박스와 점수만 쓴다.</p>
+      <p>짧은 변이 1080보다 크면(4K 등) 1080으로 줄여 검출하고 좌표를 원본 해상도로 되돌린다.</p>
+      <p class="files"><code>worker/mosaic_worker/detect.py</code> — <code>FaceDetector.detect()</code></p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">신뢰도 점수(confidence)와 0.5</h3>
+      <p>점수는 0–1 사이의 "얼굴일 것 같은 정도"다. 확률처럼 보이지만 모델 내부 값이며, <strong>같은 얼굴도 프레임마다 0.9 → 0.55 → 0.9처럼 흔들린다.</strong> 옆얼굴, 손으로 가린 얼굴, 먹는 중인 얼굴은 낮게 나온다.</p>
+      <dl class="kv">
+        <dt><code>score_threshold = 0.5</code></dt><dd>이보다 낮은 후보는 검출기가 아예 내지 않는다. 낮게 잡아 진짜 얼굴을 덜 놓치고, 오탐은 추적 규칙(0.6)에서 거른다.</dd>
+        <dt><code>nms_threshold = 0.3</code></dt><dd>같은 얼굴에 겹친 후보 박스가 여러 개 나오면 IoU 0.3 넘게 겹치는 것 중 점수 높은 하나만 남긴다(NMS).</dd>
+      </dl>
+    </div>
+  </div>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 120" role="img" aria-label="점수 구간">
+      <defs><linearGradient id="sg" x1="0" x2="1"><stop offset="0" stop-color="var(--surface-2)"/><stop offset="1" stop-color="var(--accent-soft)"/></linearGradient></defs>
+      <rect x="40" y="40" width="800" height="28" rx="6" fill="url(#sg)" stroke="var(--line)"/>
+      <rect x="40" y="40" width="400" height="28" rx="6" fill="var(--surface-2)" opacity=".9"/>
+      <line x1="440" y1="30" x2="440" y2="80" stroke="var(--muted)" stroke-width="2"/>
+      <line x1="520" y1="30" x2="520" y2="80" stroke="var(--accent)" stroke-width="2"/>
+      <text x="40" y="96" font-size="12" class="mono muted">0.0</text>
+      <text x="840" y="96" font-size="12" class="mono muted" text-anchor="end">1.0</text>
+      <text x="440" y="22" font-size="12" text-anchor="middle" class="mono">0.5</text>
+      <text x="520" y="22" font-size="12" text-anchor="middle" class="mono" style="fill:var(--accent)">0.6</text>
+      <text x="240" y="59" font-size="12" text-anchor="middle" class="muted">검출기가 버림</text>
+      <text x="480" y="98" font-size="12" text-anchor="middle">저점수</text>
+      <text x="480" y="114" font-size="11" text-anchor="middle" class="muted">기존 트랙 연장만</text>
+      <text x="680" y="59" font-size="12" text-anchor="middle">고점수 · 새 트랙 시작 가능</text>
+    </svg>
+    <figcaption>검출 기준(0.5)과 추적의 고점수 기준(0.6)은 다른 숫자다. 둘 사이의 검출은 "이미 쫓고 있는 얼굴의 흔들린 프레임"으로만 쓰인다.</figcaption>
+  </figure>
+
+  <div class="callout ok">
+    <strong>검출 ≠ 인식.</strong> 검출(detection)은 "여기 얼굴이 있다", 인식(recognition)은 "이 얼굴은 누구다"이다. 이 시스템은 얼굴 특징 벡터(임베딩)를 만들지 않고 ReID도 쓰지 않는다. 그래서 같은 사람이 화면을 나갔다 들어오면 다른 트랙이 되고, 사람이 직접 "같은 사람으로 묶기"로 합친다. 생체정보 처리를 피하기 위한 의도된 설계다 (스펙 §2, §3.5).
+  </div>
+</section>
+
+<!-- ============================================================ 4 -->
+<section id="track">
+  <h2><span class="num">4</span>추적: 직접 구현한 ByteTrack식 추적기</h2>
+  <p class="sub">검출은 프레임마다 "박스 몇 개"를 줄 뿐 이름표가 없다. 추적기는 "프레임 N의 이 박스는 프레임 N-1의 t3과 같은 얼굴"을 정해 트랙 ID를 붙인다. 외형은 보지 않고 위치와 크기만 본다.</p>
+  <p class="files"><code>worker/mosaic_worker/tracker.py</code> — <code>Tracker.update()</code>(프레임마다), <code>Tracker.finish()</code>(끝에 한 번)</p>
+
+  <h3>IoU: 두 박스가 얼마나 겹치나</h3>
+  <div class="card">
+    <div class="iou-demo">
+      <div>
+        <p style="margin-top:0"><strong>IoU = 겹친 넓이 ÷ 합친 넓이.</strong> 완전히 같으면 1, 안 겹치면 0. 추적기는 트랙의 <em>예측 위치</em>와 새 검출의 IoU가 <code>0.3</code> 이상이면 같은 얼굴 후보로 본다.</p>
+        <label for="iouSlider" style="font-size:14px">검출 박스 이동</label>
+        <input id="iouSlider" type="range" min="0" max="160" value="40">
+        <div class="iou-val" id="iouVal">0.00</div>
+        <div class="verdict" id="iouVerdict"></div>
+      </div>
+      <svg viewBox="0 0 420 200" id="iouSvg" role="img" aria-label="IoU 시연">
+        <rect x="80" y="40" width="140" height="120" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 4"/>
+        <text x="84" y="34" font-size="12" style="fill:var(--accent)">트랙 예측 위치</text>
+        <rect id="iouInter" x="0" y="40" width="0" height="120" fill="var(--accent)" opacity=".35"/>
+        <rect id="iouB" x="120" y="50" width="140" height="120" fill="none" stroke="var(--worker)" stroke-width="2"/>
+        <text id="iouBLabel" x="124" y="186" font-size="12" style="fill:var(--worker)">새 검출</text>
+      </svg>
+    </div>
+  </div>
+
+  <h3>한 프레임에서 일어나는 일</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 900 330" role="img" aria-label="2단계 매칭 흐름">
+      <defs><marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+      <g font-size="13">
+        <rect x="10" y="130" width="140" height="60" rx="8" fill="var(--surface-2)" stroke="var(--line)"/>
+        <text x="80" y="155" text-anchor="middle" font-weight="700">프레임 N 검출들</text>
+        <text x="80" y="175" text-anchor="middle" font-size="11" class="muted">score ≥ 0.5</text>
+
+        <rect x="200" y="40" width="200" height="70" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+        <text x="300" y="65" text-anchor="middle" font-weight="700">1단계: 고점수 (≥ 0.6)</text>
+        <text x="300" y="85" text-anchor="middle" font-size="11">모든 활성 트랙과 IoU 매칭</text>
+        <text x="300" y="101" text-anchor="middle" font-size="11" class="muted">IoU 큰 쌍부터 탐욕적으로</text>
+
+        <rect x="200" y="210" width="200" height="70" rx="8" fill="var(--surface-2)" stroke="var(--line)"/>
+        <text x="300" y="235" text-anchor="middle" font-weight="700">2단계: 저점수 (&lt; 0.6)</text>
+        <text x="300" y="255" text-anchor="middle" font-size="11">1단계에서 못 짝지은</text>
+        <text x="300" y="271" text-anchor="middle" font-size="11">트랙하고만 매칭</text>
+
+        <rect x="470" y="20" width="190" height="44" rx="8" fill="var(--web-soft)" stroke="var(--web)"/>
+        <text x="565" y="47" text-anchor="middle">짝지음 → 트랙 갱신</text>
+        <rect x="470" y="80" width="190" height="44" rx="8" fill="var(--web-soft)" stroke="var(--web)"/>
+        <text x="565" y="107" text-anchor="middle">남은 고점수 → 새 트랙 ✓</text>
+
+        <rect x="470" y="190" width="190" height="44" rx="8" fill="var(--web-soft)" stroke="var(--web)"/>
+        <text x="565" y="217" text-anchor="middle">짝지음 → 트랙 갱신</text>
+        <rect x="470" y="250" width="190" height="60" rx="8" fill="var(--redis-soft)" stroke="var(--redis)"/>
+        <text x="565" y="275" text-anchor="middle">남은 저점수 → 버림</text>
+        <text x="565" y="294" text-anchor="middle" font-size="11" style="fill:var(--bad)">(버그: 여기서 새 트랙을 만들었음)</text>
+
+        <rect x="710" y="130" width="180" height="80" rx="8" fill="var(--worker-soft)" stroke="var(--worker)"/>
+        <text x="800" y="155" text-anchor="middle" font-weight="700">끝내 못 짝지은 트랙</text>
+        <text x="800" y="175" text-anchor="middle" font-size="11">gap-hold: 예측 위치로 유지</text>
+        <text x="800" y="193" text-anchor="middle" font-size="11" class="muted">0.5초 넘으면 종료</text>
+      </g>
+      <g stroke="var(--muted)" stroke-width="1.5" fill="none">
+        <path d="M150 150 L198 80" marker-end="url(#arr3)"/>
+        <path d="M150 172 L198 240" marker-end="url(#arr3)"/>
+        <path d="M400 62 L468 42" marker-end="url(#arr3)"/>
+        <path d="M400 92 L468 100" marker-end="url(#arr3)"/>
+        <path d="M400 240 L468 214" marker-end="url(#arr3)"/>
+        <path d="M400 262 L468 276" marker-end="url(#arr3)"/>
+        <path d="M300 112 L300 208" marker-end="url(#arr3)" stroke-dasharray="4 3"/>
+        <path d="M660 212 C 690 200, 690 185, 708 175" marker-end="url(#arr3)" stroke-dasharray="4 3"/>
+      </g>
+      <text x="308" y="165" font-size="11" class="muted">남은 트랙</text>
+    </svg>
+    <figcaption>매칭 전에 각 트랙은 등속 예측(마지막 속도를 반영한 다음 위치)을 하고, 검출은 그 예측 박스와 비교된다. 속도는 지수 평균(<code>VEL_ALPHA = 0.5</code>)으로 부드럽게 갱신한다.</figcaption>
+  </figure>
+
+  <h3>규칙 하나씩</h3>
+  <div class="tablewrap"><table>
+    <tr><th>규칙</th><th>값 (코드 상수)</th><th>왜</th></tr>
+    <tr><td>2단계 점수 규칙</td><td><code>HIGH_SCORE = 0.6</code></td><td>진짜 얼굴은 한 번쯤은 확실하게 잡혀 트랙이 생기고, 흔들린 프레임은 저점수 검출로 이어진다. 음식·질감처럼 처음부터 낮은 점수는 트랙을 만들지 못한다.</td></tr>
+    <tr><td>IoU 매칭</td><td><code>IOU_THRESHOLD = 0.3</code></td><td>예측 박스와 30% 이상 겹쳐야 같은 얼굴 후보.</td></tr>
+    <tr><td>강제 분리</td><td><code>JUMP_DIAG_RATIO = 0.5</code></td><td>새 검출 중심이 예측 중심에서 박스 대각선의 0.5배보다 멀면 IoU와 상관없이 같은 트랙으로 보지 않는다. 두 사람이 교차할 때 ID가 서로 넘어가는 것을 막는다.</td></tr>
+    <tr><td>gap-hold</td><td><code>round(0.5 × fps)</code> 프레임, <code>HOLD_GROWTH = 1.05</code></td><td>검출이 잠깐 끊겨도(고개 돌림, 손 가림) 0.5초 동안 예측 위치에 박스를 두고 프레임마다 5%씩 키운다. 그 사이 얼굴이 드러나지 않게 하는 안전장치. 이 구간은 <code>held</code>로 표시돼 검수 항목 "gap"이 된다.</td></tr>
+    <tr><td>박스 25% 확장</td><td><code>EXPAND_RATIO = 0.25</code></td><td>검출 박스는 얼굴에 딱 맞아 머리카락·턱선이 빠진다. <code>finish()</code>에서 <strong>딱 한 번</strong> 중심 기준으로 25% 키우고 화면 밖은 잘라낸다. <code>tracks.json</code>의 박스는 확장이 끝난 최종 박스이므로 웹·렌더러는 다시 키우지 않는다.</td></tr>
+    <tr><td>짧은 트랙 유지</td><td>—</td><td>3프레임 미만 트랙도 버리지 않는다. 오탐일 수 있어도 노출 방지가 우선.</td></tr>
+  </table></div>
+
+  <h3>gap-hold를 시간축으로 보면</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 880 130" role="img" aria-label="gap-hold 시간축">
+      <g id="gapbars"></g>
+      <line x1="20" y1="80" x2="860" y2="80" stroke="var(--line)"/>
+      <text x="20" y="104" font-size="12" class="muted">검출됨</text>
+      <rect x="20" y="112" width="12" height="10" fill="var(--web)"/><text x="38" y="121" font-size="11">실제 검출</text>
+      <rect x="120" y="112" width="12" height="10" fill="var(--worker)"/><text x="138" y="121" font-size="11">gap-hold (예측 위치, 박스 5%씩 커짐)</text>
+      <rect x="390" y="112" width="12" height="10" fill="var(--surface-2)" stroke="var(--line)"/><text x="408" y="121" font-size="11">트랙 종료 — 다시 나타나면 새 ID</text>
+    </svg>
+    <figcaption>30fps 기준 15프레임. 0.5초 안에 다시 잡히면 같은 트랙이 이어지고, 그보다 길게 사라지면 트랙이 끝난다.</figcaption>
+  </figure>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">왜 트랙이 조각나나</h3>
+      <p>외형을 보지 않으므로 다음 중 하나면 같은 사람이 새 ID를 받는다.</p>
+      <ul class="tight">
+        <li>0.5초보다 길게 가려지거나 화면 밖으로 나감</li>
+        <li>빠르게 움직여 강제 분리 조건에 걸림</li>
+        <li>컷 전환으로 위치가 갑자기 바뀜</li>
+      </ul>
+      <p>이건 실패가 아니라 설계의 대가다. 사람 카드에 "조각 수"가 보이고, 사용자가 카드를 여러 개 골라 <strong>같은 사람으로 묶기</strong>(<code>edits.groups</code>)로 합친다. 반대 방향 실수(두 사람이 한 트랙)는 <strong>트랙 분할</strong>로 고친다(6절).</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">방금 고친 오탐 버그</h3>
+      <p>원래 2단계에서 짝을 못 찾은 <strong>저점수 검출도 새 트랙을 시작</strong>했다. 음식·손·질감이 0.5–0.6 점수로 한 프레임 잡히면 새 "사람"이 되고, gap-hold 때문에 0.5초짜리 모자이크가 화면 곳곳에 생겼다. 검수 항목도 그만큼 늘었다.</p>
+      <div class="grid3" style="margin:12px 0">
+        <div class="stat"><div class="big-num" style="color:var(--bad)">103</div><small>수정 전 트랙</small></div>
+        <div class="stat"><div class="big-num" style="color:var(--good)">60</div><small>ByteTrack 규칙</small></div>
+        <div class="stat"><div class="big-num" style="color:var(--muted)">42</div><small>기준 0.7 (기각)</small></div>
+      </div>
+      <p style="font-size:14px">35초 60fps 폰 화면녹화 기준. 새 트랙 기준을 0.7로 올리면 트랙은 더 줄지만 <strong>가려진 얼굴 31프레임 중 29프레임이 노출</strong>됐다. 기준값을 올리는 대신 "저점수는 연장에만" 규칙을 택한 이유다. <code>update()</code>의 <code>new_dets = [high[i] for i in un_high]</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section id="mosaic">
+  <h2><span class="num">5</span>모자이크 렌더</h2>
+  <p class="sub">모자이크(픽셀화)는 박스 영역을 블록 단위로 나눠 블록마다 평균색 하나로 칠하는 것이다. 핵심은 미리보기와 결과 영상이 <strong>같은 블록 격자</strong>를 쓰는 것.</p>
+
+  <div class="grid2">
+    <figure class="diagram" style="margin:0">
+      <svg viewBox="0 0 400 260" role="img" aria-label="블록 격자">
+        <g id="mosaicGrid"></g>
+        <circle cx="60" cy="40" r="5" fill="var(--accent)"/>
+        <text x="70" y="30" font-size="12" style="fill:var(--accent)">격자 원점 = 박스 좌상단</text>
+        <text x="60" y="250" font-size="12" class="muted">한 칸 = blockSize × blockSize 원본 픽셀</text>
+      </svg>
+      <figcaption>격자를 화면 기준(0,0)이 아니라 박스 좌상단에 붙인다. 블록 크기도 트랙마다 고정이라, 박스가 움직여도 블록이 떨리지 않는다.</figcaption>
+    </figure>
+    <div class="card" style="margin:0">
+      <h3 style="margin-top:0">블록 크기 규칙</h3>
+      <dl class="kv">
+        <dt>트랙</dt><dd><code>blockSize = max(8, 트랙 박스 짧은 변의 중앙값 // 8)</code>. 트랙 전체에서 한 번 계산(<code>tracker.py</code> <code>block_size()</code>). 프레임마다 바꾸면 모자이크가 꿈틀거린다.</dd>
+        <dt>수동 박스</dt><dd><code>max(8, min(w, h) // 8)</code>, 박스마다 계산.</dd>
+      </dl>
+      <h3>어떤 박스를 가리나</h3>
+      <p><code>tracks.json</code> + <code>edits.json</code> + <code>manual/*.json</code>을 합쳐 <code>{frame: [[x,y,w,h,block], ...]}</code>을 만든다. 기본은 전부 가림, <code>visible</code>에 있는 트랙·그룹 조각만 뺀다. 분할된 트랙은 <code>t2a</code>/<code>t2b</code> 조각 단위로 판단한다.</p>
+      <p class="files">워커 <code>compose.py</code> <code>mask_boxes()</code> ⇄ 웹 <code>apps/web/src/lib/masks.ts</code> <code>maskBoxes()</code></p>
+    </div>
+  </div>
+
+  <h3>같은 규칙을 두 곳에서: 서버 렌더와 브라우저 미리보기</h3>
+  <div class="tablewrap"><table>
+    <tr><th></th><th><span class="tag t-worker">worker</span> 결과 영상</th><th><span class="tag t-web">web</span> 미리보기</th></tr>
+    <tr><td>현재 프레임</td><td>OpenCV로 순서대로 읽은 인덱스</td><td><code>requestVideoFrameCallback</code>의 <code>mediaTime</code> → <code>round(mediaTime × fps)</code>. 미지원 브라우저는 <code>timeupdate</code> + rAF</td></tr>
+    <tr><td>픽셀화</td><td><code>render.py</code> <code>pixelate()</code>: 영역을 <code>cols×rows</code>로 <code>INTER_AREA</code> 축소 후 <code>INTER_NEAREST</code>로 확대</td><td><code>PlayerOverlay.tsx</code>: 영상 영역을 <code>cols×rows</code> 크기 오프스크린 canvas에 그린 뒤 <code>imageSmoothingEnabled = false</code>로 확대</td></tr>
+    <tr><td>좌표</td><td>원본 해상도 픽셀</td><td>원본 픽셀로 격자 계산 → 표시 크기로 스케일(<code>geometry.ts</code> <code>toDisplay()</code>, <code>containRect()</code>)</td></tr>
+    <tr><td>원본 영상 수정</td><td>프레임에 직접 덮어씀 → ffmpeg로 H.264 CRF 20 인코딩</td><td>없음. <code>&lt;video&gt;</code> 위에 canvas를 겹쳐 그릴 뿐이라 켜기/끄기가 재처리 없이 즉시 반영</td></tr>
+    <tr><td>안전장치</td><td>—</td><td>프레임을 아직 못 그리면 원본 대신 회색 박스</td></tr>
+  </table></div>
+
+  <div class="callout warn">
+    <strong>왜 굳이 맞추나:</strong> 사용자는 미리보기를 보고 "다 가려졌다"고 판단한 뒤 렌더한다. 두 쪽이 다른 프레임이나 다른 박스를 쓰면 미리보기에선 가려졌던 얼굴이 결과 파일에서 드러난다. 그래서 규칙을 <code>contracts/fixtures/</code>에 픽스처(<code>tracks.sample.json</code>, <code>edits.sample.json</code>, <code>manual.sample.json</code>)와 기대값(<code>expected-mask-frames.json</code>)으로 고정하고, 워커 pytest와 웹 Vitest가 <strong>같은 기대값</strong>을 검사한다.
+  </div>
+</section>
+
+<!-- ============================================================ 6 -->
+<section id="review">
+  <h2><span class="num">6</span>검수 큐, 트랙 분할, 수동 박스</h2>
+  <p class="sub">자동 결과가 틀리기 쉬운 지점을 워커가 미리 표시하고, 사람이 확인하거나 고친다. 확인하지 않으면 렌더할 수 없다.</p>
+
+  <h3>확인 필요 항목 (<code>review.json</code>)</h3>
+  <div class="grid3">
+    <div class="card"><span class="tag t-worker">low_confidence</span><p>실제 검출 프레임 15개를 미끄러지는 창으로 보며 평균 점수가 0.6 미만인 구간(15프레임 이상). 오탐이거나, 진짜 얼굴인데 박스가 불안한 곳.</p></div>
+    <div class="card"><span class="tag t-worker">gap</span><p>gap-hold로 채운 구간. 예측 위치가 실제 얼굴을 덮었는지 사람이 봐야 한다.</p></div>
+    <div class="card"><span class="tag t-worker">crossing</span><p>두 트랙 박스의 IoU가 0.1을 넘는 구간. 교차 후 ID가 바뀌었는지 확인한다.</p></div>
+  </div>
+  <p>같은 종류·같은 트랙의 항목이 1초 이내로 붙어 있으면 하나로 합친다. 항목마다 "괜찮음"(→ <code>edits.reviewed</code>에 추가) 또는 "박스 추가"를 고른다. <span class="files"><code>worker/mosaic_worker/review.py</code> <code>build_review()</code></span></p>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">트랙 분할</h3>
+      <p>추적기가 두 사람을 한 트랙으로 이었을 때, 현재 프레임 F에서 "여기서 분할"하면 <code>edits.splits</code>에 <code>{trackId: "t2", frame: F}</code>가 들어간다.</p>
+      <pre><code>t2  ─────────────┬───────────────
+                 F
+t2a ─────────────┘  (frame &lt; F)
+t2b              └─────────────── (frame ≥ F)</code></pre>
+      <p>원본 <code>tracks.json</code>은 그대로 두고, 웹(<code>pieces.ts</code>)과 워커(<code>compose.py</code> <code>split_fragments()</code>)가 읽을 때 나눈다. 보임/가림은 조각 ID로 지정한다.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">수동 박스와 CSRT 전파</h3>
+      <p>검출기가 놓친 얼굴은 사용자가 플레이어에서 박스를 그린다. 웹이 <code>POST /manual</code> → API가 <code>queue:propagate</code> → 워커가 OpenCV <strong>CSRT</strong> 추적기로 앞뒤로 따라간다.</p>
+      <ul class="tight">
+        <li>CSRT는 "처음 지정한 영역의 생김새"를 학습해 다음 프레임에서 찾는 단일 물체 추적기다. 검출기 없이도 따라가지만, <strong>실패 신호 없이 서서히 어긋날 수 있다.</strong></li>
+        <li>속도를 위해 짧은 변 720으로 줄인 프레임에서 추적, 방향별 최대 10초, 실패하거나 화면을 벗어나면 중단</li>
+        <li>결과는 25% 확장해 <code>manual/{id}.json</code>에 저장. 상태는 <code>job:{id}:manual:{mid}</code> (<code>tracking → done|failed</code>)</li>
+        <li>재기준(re-anchor): 다른 프레임에 박스를 다시 그리면 가장 가까운 이웃 기준 프레임 사이만 교체</li>
+        <li>전파가 실패하거나 아직 없으면, 그린 프레임만 고정 박스로 가린다 (웹·워커 동일)</li>
+      </ul>
+      <p class="files"><code>worker/mosaic_worker/propagate.py</code> <code>propagate()</code></p>
+    </div>
+  </div>
+  <div class="callout">
+    <strong>YuNet 트랙 vs CSRT 수동 박스:</strong> 자동 트랙은 "매 프레임 검출 → 위치로 잇기"라 외형을 기억하지 않는다. CSRT는 한 영역의 외형을 기억해 따라가는 방식이다. 그래도 사람의 신원을 식별하지 않고, 결과는 박스 좌표만 남는다.
+  </div>
+</section>
+
+<!-- ============================================================ 7 -->
+<section id="queue">
+  <h2><span class="num">7</span>작업 큐와 API 렌더 게이트</h2>
+  <p class="sub">NestJS와 Python이 같은 계약을 쓰도록 라이브러리 없이 Redis 리스트를 큐로 쓴다. 대신 "워커가 죽으면?"과 "Redis가 재시작되면?"을 직접 처리한다.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 900 250" role="img" aria-label="Redis 큐 흐름">
+      <defs><marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+      <g font-size="12">
+        <rect x="10" y="80" width="120" height="60" rx="8" fill="var(--api-soft)" stroke="var(--api)"/>
+        <text x="70" y="106" text-anchor="middle" font-weight="700" style="fill:var(--api)">api</text>
+        <text x="70" y="124" text-anchor="middle" class="mono">LPUSH</text>
+
+        <rect x="200" y="20" width="230" height="40" rx="6" fill="var(--redis-soft)" stroke="var(--redis)"/>
+        <text x="315" y="45" text-anchor="middle" class="mono">1 queue:propagate</text>
+        <rect x="200" y="90" width="230" height="40" rx="6" fill="var(--redis-soft)" stroke="var(--redis)"/>
+        <text x="315" y="115" text-anchor="middle" class="mono">2 queue:render</text>
+        <rect x="200" y="160" width="230" height="40" rx="6" fill="var(--redis-soft)" stroke="var(--redis)"/>
+        <text x="315" y="185" text-anchor="middle" class="mono">3 queue:analyze</text>
+
+        <rect x="500" y="80" width="170" height="60" rx="6" fill="var(--redis-soft)" stroke="var(--redis)" stroke-dasharray="5 3"/>
+        <text x="585" y="106" text-anchor="middle" class="mono">processing:worker</text>
+        <text x="585" y="124" text-anchor="middle" font-size="11" class="muted">처리 중 보관</text>
+
+        <rect x="740" y="80" width="150" height="60" rx="8" fill="var(--worker-soft)" stroke="var(--worker)"/>
+        <text x="815" y="106" text-anchor="middle" font-weight="700" style="fill:var(--worker)">worker</text>
+        <text x="815" y="124" text-anchor="middle" font-size="11">처리 → LREM</text>
+      </g>
+      <g stroke="var(--muted)" stroke-width="1.5" fill="none">
+        <path d="M130 100 L198 42" marker-end="url(#arr4)"/>
+        <path d="M130 110 L198 110" marker-end="url(#arr4)"/>
+        <path d="M130 120 L198 178" marker-end="url(#arr4)"/>
+        <path d="M430 40 L498 95" marker-end="url(#arr4)"/>
+        <path d="M430 110 L498 110" marker-end="url(#arr4)"/>
+        <path d="M430 180 L498 125" marker-end="url(#arr4)"/>
+        <path d="M670 110 L738 110" marker-end="url(#arr4)"/>
+        <path d="M585 142 C 585 235, 330 240, 318 202" marker-end="url(#arr4)" stroke-dasharray="4 3"/>
+      </g>
+      <text x="455" y="78" font-size="11" class="muted" text-anchor="middle">LMOVE</text>
+      <text x="470" y="232" font-size="11" class="muted" text-anchor="middle">재시작 시 남은 메시지를 원래 큐로 되돌림</text>
+    </svg>
+    <figcaption>워커는 0.5초마다 우선순위대로 세 큐를 확인한다. 꺼낼 때 원자적으로 <code>processing:worker</code>로 옮기고(<code>LMOVE</code>), 어느 큐에서 왔는지 <code>processing:worker:src</code> 해시에 적는다.</figcaption>
+  </figure>
+
+  <div class="tablewrap"><table>
+    <tr><th>문제</th><th>해결</th><th>위치</th></tr>
+    <tr><td>워커가 메시지를 꺼낸 뒤 죽으면 작업이 사라지고 화면은 영원히 "처리 중" (리뷰 E1)</td><td>꺼내면서 <code>processing:worker</code>에 옮기고 끝나면 <code>LREM</code>. 워커 시작 시 남은 항목을 원래 큐로 되돌림</td><td><code>main.py</code> <code>pop_next()</code>, <code>requeue_processing()</code></td></tr>
+    <tr><td>긴 분석 뒤에 짧은 수동 박스 전파가 줄 서서 "추적 중"이 수 분 지속 (E3)</td><td>확인 순서 <code>propagate → render → analyze</code></td><td><code>main.py</code> <code>PRIORITY</code></td></tr>
+    <tr><td>Redis가 재시작되면 상태 해시가 사라짐 (E2)</td><td>워커가 상태를 <code>job:{id}:status</code> 해시와 <code>status.json</code> 파일에 함께 기록, API는 해시가 없으면 파일을 읽음</td><td><code>status.py</code> <code>StatusWriter.set()</code>, <code>jobs.service.ts</code></td></tr>
+    <tr><td>2GB 업로드를 메모리에 받으면 API가 죽음 (E4)</td><td>multer <code>diskStorage</code>로 작업 디렉터리에 바로 기록, 실패 시 디렉터리 정리</td><td><code>apps/api/src/jobs/upload.ts</code></td></tr>
+  </table></div>
+
+  <h3>상태 해시 <code>job:{id}:status</code></h3>
+  <dl class="kv card">
+    <dt><code>state</code></dt><dd><code>queued | normalizing | analyzing | ready | rendering | rendered | failed</code></dd>
+    <dt><code>progress</code></dt><dd>0–100 정수. 처리한 프레임 ÷ 전체 프레임. 웹이 2초마다 폴링</dd>
+    <dt><code>error</code></dt><dd>사용자에게 그대로 보여줄 한국어 문장 (<code>status.py</code>의 <code>MSG_*</code>)</dd>
+    <dt><code>updatedAt</code></dt><dd>ISO 시각</dd>
+  </dl>
+
+  <h3>렌더 게이트 (<code>POST /api/jobs/:id/render</code>)</h3>
+  <div class="card">
+    <p style="margin-top:0">API가 큐에 넣기 전에 순서대로 검사하고, 하나라도 걸리면 <strong>409</strong>를 돌려준다 (<code>jobs.service.ts</code> <code>requestRender()</code>).</p>
+    <ol class="tight">
+      <li><code>review.json</code> 항목 중 <code>edits.reviewed</code>에 없는 것이 있으면 → "확인 필요 항목 N건이 남았습니다."</li>
+      <li>이미 렌더 중이거나, 렌더 요청 키(<code>job:{id}:render_requested</code>)가 워커의 마지막 상태보다 최신이면 → "이미 렌더 중입니다." (중복 클릭 방지)</li>
+      <li>상태가 <code>ready</code>/<code>rendered</code>가 아니면 → "분석이 끝난 뒤에 렌더할 수 있습니다."</li>
+      <li>통과하면 요청 키를 기록하고 <code>queue:render</code>에 <code>{"jobId"}</code>를 넣는다.</li>
+    </ol>
+    <p>웹도 미처리 항목이 있으면 렌더 버튼을 끄지만, 최종 판단은 API가 한다. 화면을 우회해도 검수 없이 결과 파일이 나오지 않는다.</p>
+  </div>
+</section>
+
+<!-- ============================================================ 8 -->
+<section id="glossary">
+  <h2><span class="num">8</span>용어집</h2>
+  <div class="tablewrap"><table>
+    <tr><th>용어</th><th>뜻</th><th>이 프로젝트에서</th></tr>
+    <tr><td>프레임 (frame)</td><td>영상을 이루는 정지 이미지 한 장</td><td>모든 박스·편집의 키. <code>tracks.json</code>의 <code>frames</code>는 프레임 번호 → 박스</td></tr>
+    <tr><td>fps</td><td>초당 프레임 수</td><td>원본 fps를 반올림한 정수. <code>meta.json</code></td></tr>
+    <tr><td>CFR / VFR</td><td>고정 / 가변 프레임레이트</td><td>정규화로 항상 CFR. 웹과 워커의 프레임 번호를 일치시키기 위함</td></tr>
+    <tr><td>PTS</td><td>프레임을 보여줄 시각(presentation timestamp)</td><td>0부터 시작하도록 <code>setpts</code>·<code>-bf 0</code>·<code>avoid_negative_ts</code></td></tr>
+    <tr><td>코덱 / 컨테이너</td><td>압축 방식(H.264, AAC) / 파일 포맷(mp4)</td><td>결과는 mp4 · H.264 · AAC</td></tr>
+    <tr><td>CRF</td><td>x264 품질 지표, 낮을수록 고화질·대용량</td><td>정규화·렌더 모두 20</td></tr>
+    <tr><td>B-프레임</td><td>앞뒤 프레임을 참조하는 압축 프레임</td><td><code>-bf 0</code>으로 끔 (첫 PTS를 0으로 유지)</td></tr>
+    <tr><td>ffmpeg</td><td>영상 변환·인코딩 CLI</td><td>정규화, 렌더 인코딩, 오디오 mux</td></tr>
+    <tr><td>검출 (detection)</td><td>이미지에서 얼굴 위치 찾기</td><td>YuNet, <code>detect.py</code></td></tr>
+    <tr><td>인식 (recognition)</td><td>얼굴이 누구인지 판별</td><td><strong>하지 않음</strong>. 임베딩·ReID 없음</td></tr>
+    <tr><td>신뢰도 (confidence, score)</td><td>검출 후보가 얼굴일 것 같은 정도 0–1</td><td>0.5 미만 버림, 0.6 이상만 새 트랙 시작</td></tr>
+    <tr><td>IoU</td><td>두 박스의 겹친 넓이 ÷ 합친 넓이</td><td>추적 매칭 0.3, 교차 검수 0.1</td></tr>
+    <tr><td>NMS</td><td>겹친 후보 박스 중 최고 점수 하나만 남기기</td><td>YuNet 내부, <code>nms_threshold = 0.3</code></td></tr>
+    <tr><td>트랙 (track)</td><td>여러 프레임에 걸친 같은 얼굴의 박스 묶음</td><td><code>t1, t2…</code>, 사람 카드의 단위</td></tr>
+    <tr><td>트랙 조각화</td><td>같은 사람이 여러 트랙으로 나뉨</td><td>그룹(같은 사람으로 묶기)으로 합침</td></tr>
+    <tr><td>ByteTrack</td><td>고점수·저점수 검출을 나눠 2단계로 매칭하는 추적 기법</td><td>외부 라이브러리 없이 <code>tracker.py</code>에 직접 구현</td></tr>
+    <tr><td>등속 예측</td><td>마지막 속도로 다음 위치를 추정</td><td>매칭 전 예측 박스, gap-hold 중 이동</td></tr>
+    <tr><td>gap-hold</td><td>검출이 끊긴 트랙을 잠시 유지</td><td>0.5초, 박스 프레임당 5% 확대, 검수 "gap"</td></tr>
+    <tr><td>강제 분리</td><td>중심이 너무 멀리 튀면 다른 트랙으로</td><td>중심 거리 &gt; 대각선 × 0.5</td></tr>
+    <tr><td>CSRT</td><td>지정한 영역의 외형을 학습해 따라가는 단일 물체 추적기</td><td>수동 박스 전파, <code>propagate.py</code></td></tr>
+    <tr><td>재기준 (re-anchor)</td><td>다른 프레임에 박스를 다시 그려 추적을 바로잡기</td><td>이웃 기준 프레임 사이만 교체</td></tr>
+    <tr><td>픽셀화 (pixelation)</td><td>영역을 블록으로 나눠 블록마다 평균색 하나로 칠함</td><td>격자 원점 = 박스 좌상단, 블록 크기 트랙별 고정</td></tr>
+    <tr><td>blockSize</td><td>모자이크 한 칸의 한 변(원본 픽셀)</td><td>트랙: 짧은 변 중앙값 / 8, 최소 8</td></tr>
+    <tr><td><code>requestVideoFrameCallback</code></td><td>브라우저가 새 프레임을 화면에 낼 때마다 그 프레임의 미디어 시각을 주는 API</td><td>미리보기 오버레이의 프레임 시계</td></tr>
+    <tr><td>렌더 게이트</td><td>렌더 요청 전 서버 검사</td><td>미처리 검수 항목이 있으면 409</td></tr>
+  </table></div>
+</section>
+
+<footer>
+  기준: 스펙 <code>docs/superpowers/specs/2026-10-30-face-mosaic-studio-design.md</code>, 계획·Eng Review <code>docs/superpowers/plans/2026-10-30-face-mosaic-studio.md</code>, 2026-10-30 시점 코드. 수치(103 → 60 트랙)는 35초 60fps 폰 화면녹화 한 개로 잰 값이다.
+</footer>
+</main>
+</div>
+
+<script>
+(function () {
+  // theme toggle
+  var root = document.documentElement;
+  try { var t = localStorage.getItem('fms-theme'); if (t) root.setAttribute('data-theme', t); } catch (e) {}
+  document.getElementById('themeBtn').addEventListener('click', function () {
+    var cur = root.getAttribute('data-theme') ||
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = cur === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('fms-theme', next); } catch (e) {}
+  });
+
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    parent.appendChild(n);
+    return n;
+  }
+
+  // CFR bars
+  var cfr = document.getElementById('cfrbars');
+  for (var i = 0; i < 14; i++) el('rect', { x: 200 + i * 49, y: 96, width: 8, height: 24, rx: 2 }, cfr);
+
+  // gap-hold timeline: 12 detected, 6 held (shown as 15 frames scaled), end, then new id
+  var gap = document.getElementById('gapbars');
+  var x = 20, w = 22, gapG = 4, base = 72;
+  function bar(kind, h) {
+    var fill = kind === 'det' ? 'var(--web)' : kind === 'hold' ? 'var(--worker)' : 'var(--surface-2)';
+    el('rect', { x: x, y: base - h, width: w, height: h, rx: 2, fill: fill, stroke: kind === 'none' ? 'var(--line)' : 'none' }, gap);
+    x += w + gapG;
+  }
+  for (var a = 0; a < 10; a++) bar('det', 30);
+  for (var b = 0; b < 3; b++) bar('hold', 30 * Math.pow(1.05, b + 1));
+  for (var c = 0; c < 6; c++) bar('det', 30);
+  var hs = x;
+  for (var d = 0; d < 9; d++) bar('hold', 30 * Math.pow(1.05, d + 1));
+  el('line', { x1: hs, y1: 14, x2: x - gapG, y2: 14, stroke: 'var(--muted)' }, gap);
+  var lbl = el('text', { x: (hs + x) / 2, y: 10, 'font-size': 11, 'text-anchor': 'middle', 'class': 'muted' }, gap);
+  lbl.textContent = '최대 0.5초 = round(0.5 × fps) 프레임';
+  for (var e2 = 0; e2 < 3; e2++) bar('none', 30);
+  for (var f = 0; f < 4; f++) bar('det', 30);
+  var lbl2 = el('text', { x: x - 2 * (w + gapG), y: 30, 'font-size': 11, 'text-anchor': 'middle' }, gap);
+  lbl2.textContent = '새 트랙';
+  var lbl3 = el('text', { x: 20 + 11 * (w + gapG), y: 30, 'font-size': 11, 'text-anchor': 'middle' }, gap);
+  lbl3.textContent = '다시 잡힘 → 같은 트랙';
+
+  // mosaic grid
+  var mg = document.getElementById('mosaicGrid');
+  var ox = 60, oy = 40, bs = 32, cols = 9, rows = 6;
+  var shades = ['var(--mosaic-a)', 'var(--mosaic-b)', 'var(--mosaic-c)'];
+  for (var r = 0; r < rows; r++) for (var cc = 0; cc < cols; cc++) {
+    var dx = cc - 4, dy = r - 2.5;
+    var idx = (dx * dx + dy * dy < 7) ? 2 : ((r + cc * 2) % 3 === 0 ? 1 : 0);
+    el('rect', { x: ox + cc * bs, y: oy + r * bs, width: bs, height: bs, fill: shades[idx], stroke: 'var(--surface)', 'stroke-width': 1 }, mg);
+  }
+  el('rect', { x: ox, y: oy, width: cols * bs - 12, height: rows * bs - 8, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-dasharray': '6 4' }, mg);
+
+  // IoU demo
+  var A = { x: 80, y: 40, w: 140, h: 120 };
+  var slider = document.getElementById('iouSlider');
+  var bEl = document.getElementById('iouB'), inter = document.getElementById('iouInter');
+  var lab = document.getElementById('iouBLabel');
+  function update() {
+    var B = { x: 80 + Number(slider.value), y: 50, w: 140, h: 120 };
+    bEl.setAttribute('x', B.x); lab.setAttribute('x', B.x + 4);
+    var ix = Math.max(A.x, B.x), iy = Math.max(A.y, B.y);
+    var iw = Math.min(A.x + A.w, B.x + B.w) - ix, ih = Math.min(A.y + A.h, B.y + B.h) - iy;
+    var I = iw > 0 && ih > 0 ? iw * ih : 0;
+    inter.setAttribute('x', ix); inter.setAttribute('y', iy);
+    inter.setAttribute('width', Math.max(0, iw)); inter.setAttribute('height', Math.max(0, ih));
+    var U = A.w * A.h + B.w * B.h - I;
+    var v = I / U;
+    document.getElementById('iouVal').textContent = v.toFixed(2);
+    var verdict = document.getElementById('iouVerdict');
+    if (v >= 0.3) { verdict.textContent = 'IoU ≥ 0.3 → 같은 얼굴 후보'; verdict.style.color = 'var(--good)'; }
+    else { verdict.textContent = 'IoU < 0.3 → 매칭 안 됨'; verdict.style.color = 'var(--bad)'; }
+  }
+  slider.addEventListener('input', update);
+  update();
+
+  // TOC highlight
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          links.forEach(function (l) { l.classList.toggle('on', l.getAttribute('href') === '#' + en.target.id); });
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    document.querySelectorAll('main section').forEach(function (s) { io.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>
