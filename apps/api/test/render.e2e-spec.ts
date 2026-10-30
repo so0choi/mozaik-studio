@@ -40,15 +40,17 @@ describe('render gate, manual, output (A3)', () => {
   afterEach(() => ctx.close());
 
   it('409 with count while review items are unreviewed; 202 + queue:render when all reviewed', async () => {
+    // t2 visible + t1 masked: gap(t1) and crossing(t1,t2) are both required
+    expect((await putEdits({ version: 1, visible: ['t2'], groups: [], splits: [], manual: [], reviewed: [] })).status).toBe(200);
     let r = await post('/render');
     expect(r.status).toBe(409);
     expect(r.body.message).toBe('확인 필요 항목 2건이 남았습니다.');
-    expect((await putEdits({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1'] })).status).toBe(200);
+    expect((await putEdits({ version: 1, visible: ['t2'], groups: [], splits: [], manual: [], reviewed: ['r1'] })).status).toBe(200);
     r = await post('/render');
     expect(r.status).toBe(409);
     expect(r.body.message).toBe('확인 필요 항목 1건이 남았습니다.');
     expect(await ctx.redis.llen('queue:render')).toBe(0);
-    await putEdits({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1', 'r2'] });
+    await putEdits({ version: 1, visible: ['t2'], groups: [], splits: [], manual: [], reviewed: ['r1', 'r2'] });
     r = await post('/render');
     expect(r.status).toBe(202);
     const q = await ctx.redis.lrange('queue:render', 0, -1);
@@ -168,5 +170,87 @@ describe('render gate, manual, output (A3)', () => {
       expect(repo.get(recent)).toBeDefined();
       expect(svc.sweep(now)).toBe(0);
     });
+  });
+});
+
+describe('render gate: only items that can still expose a face are required', () => {
+  let ctx: TestCtx;
+  let id: string;
+  let cookie: string;
+  const item = (rid: string, type: string, trackIds: string[]) => ({ id: rid, type, trackIds, startFrame: 1, endFrame: 5, box: [1, 1, 2, 2] });
+  const T2_SPLIT = [{ trackId: 't2', frame: 10 }];
+  const render = () => request(ctx.server).post(`/api/jobs/${id}/render`).set('Cookie', cookie);
+  const withEdits = async (visible: string[], items: unknown[], splits: unknown[] = []) => {
+    seed(ctx, id, { 'review.json': { items } });
+    const res = await request(ctx.server)
+      .put(`/api/jobs/${id}/edits`)
+      .set('Cookie', cookie)
+      .send({ version: 1, visible, groups: [], splits, manual: [], reviewed: [] });
+    expect(res.status).toBe(200);
+  };
+
+  beforeEach(async () => {
+    ctx = await createApp();
+    id = await newJob(ctx);
+    cookie = await login(ctx);
+    seed(ctx, id, { 'tracks.json': fixture('tracks.sample.json') });
+    await ctx.redis.hset(`job:${id}:status`, { state: 'ready', progress: '100', updatedAt: new Date(Date.now() - 5000).toISOString() });
+  });
+  afterEach(() => ctx.close());
+
+  it('crossing with both people masked does not block (202)', async () => {
+    await withEdits([], [item('r1', 'crossing', ['t1', 't2'])]);
+    expect((await render()).status).toBe(202);
+  });
+
+  it('crossing with t1 visible and t2 masked blocks (409, 1 item)', async () => {
+    await withEdits(['t1'], [item('r1', 'crossing', ['t1', 't2'])]);
+    const r = await render();
+    expect(r.status).toBe(409);
+    expect(r.body.message).toBe('확인 필요 항목 1건이 남았습니다.');
+  });
+
+  it('crossing with both people visible does not block', async () => {
+    await withEdits(['t1', 't2'], [item('r1', 'crossing', ['t1', 't2'])]);
+    expect((await render()).status).toBe(202);
+  });
+
+  it('gap on a visible track does not block', async () => {
+    await withEdits(['t1'], [item('r1', 'gap', ['t1'])]);
+    expect((await render()).status).toBe(202);
+  });
+
+  it('gap on a masked track blocks', async () => {
+    await withEdits([], [item('r1', 'gap', ['t1'])]);
+    const r = await render();
+    expect(r.status).toBe(409);
+    expect(r.body.message).toBe('확인 필요 항목 1건이 남았습니다.');
+  });
+
+  it('split pieces: t2a visible + t1 masked makes the crossing required (t2 is only half visible)', async () => {
+    // visibleAny(t2) && maskedAny(t1) -> required
+    await withEdits(['t2a'], [item('r1', 'crossing', ['t1', 't2'])], T2_SPLIT);
+    const r = await render();
+    expect(r.status).toBe(409);
+    expect(r.body.message).toBe('확인 필요 항목 1건이 남았습니다.');
+  });
+
+  it('split pieces: t1, t2a, t2b all visible -> crossing not required; a half-visible gap track is still required', async () => {
+    await withEdits(['t1', 't2a', 't2b'], [item('r1', 'crossing', ['t1', 't2'])], T2_SPLIT);
+    expect((await render()).status).toBe(202);
+    await ctx.redis.hset(`job:${id}:status`, { state: 'ready', updatedAt: new Date(Date.now() + 1000).toISOString() });
+    await withEdits(['t2a'], [item('r2', 'gap', ['t2'])], T2_SPLIT);
+    const r = await render();
+    expect(r.status).toBe(409);
+    expect(r.body.message).toBe('확인 필요 항목 1건이 남았습니다.');
+  });
+
+  it('reviewed items are never required', async () => {
+    seed(ctx, id, { 'review.json': { items: [item('r1', 'gap', ['t1'])] } });
+    await request(ctx.server)
+      .put(`/api/jobs/${id}/edits`)
+      .set('Cookie', cookie)
+      .send({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1'] });
+    expect((await render()).status).toBe(202);
   });
 });

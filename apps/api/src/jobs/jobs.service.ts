@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppConfig, CONFIG } from '../config';
 import { REDIS } from '../core.module';
+import { requiredItems, type ReviewItemLike } from './review-required';
 import { DEFAULT_EDITS, isValidBox, validateEdits } from './edits.validator';
 import { manualKey, Queue, QUEUE_ANALYZE, QUEUE_PROPAGATE, QUEUE_RENDER, renderRequestedKey, statusKey } from './queue';
 import { JobRepo, JobRow } from './repo';
@@ -141,9 +142,19 @@ export class JobsService {
     return this.storage.readJson(this.storage.file(id, 'edits.json')) ?? DEFAULT_EDITS();
   }
 
-  private reviewIds(id: string): string[] {
+  private reviewItems(id: string): ReviewItemLike[] {
     const r = this.storage.readJson<any>(this.storage.file(id, 'review.json'));
-    return Array.isArray(r?.items) ? r.items.map((i: any) => String(i.id)) : [];
+    return Array.isArray(r?.items)
+      ? r.items.map((i: any) => ({
+          id: String(i.id),
+          type: String(i.type),
+          trackIds: Array.isArray(i.trackIds) ? i.trackIds.map(String) : [],
+        }))
+      : [];
+  }
+
+  private reviewIds(id: string): string[] {
+    return this.reviewItems(id).map((i) => i.id);
   }
 
   putEdits(id: string, body: unknown) {
@@ -160,8 +171,7 @@ export class JobsService {
     this.renderLocks.add(id);
     try {
       const edits: any = this.getEdits(id);
-      const reviewed = new Set<string>(Array.isArray(edits.reviewed) ? edits.reviewed : []);
-      const pending = this.reviewIds(id).filter((r) => !reviewed.has(r)).length;
+      const pending = requiredItems(this.reviewItems(id), edits).length;
       if (pending > 0) throw new ConflictException(`확인 필요 항목 ${pending}건이 남았습니다.`);
 
       const status = await this.status(id);

@@ -6,6 +6,8 @@ from .tracker import Track, iou
 LOW_SCORE = 0.6
 LOW_MIN_FRAMES = 15
 CROSS_IOU = 0.1
+EDGE_MARGIN = 0.03  # box within 3% of the frame border = the face can have walked out
+CUT_SLACK = 2  # frames
 
 
 def _runs(frames: list[int]) -> list[tuple[int, int]]:
@@ -41,7 +43,23 @@ def _low_confidence(track: Track) -> list[tuple[int, int]]:
     return [(a, b) for a, b in _runs(list(marked)) if b - a + 1 >= n]
 
 
-def build_review(tracks: list[Track], fps: int) -> dict:
+def _trailing_gap_explained(track: Track, last_real: int, hold_end: int, fps: int, frame_size, frame_count, cuts) -> bool:
+    """A track that ended needs no review if the face left the frame, the shot cut, or the video ended."""
+    if frame_count is not None and hold_end >= frame_count - 1:
+        return True
+    if any(last_real - CUT_SLACK <= c <= hold_end + CUT_SLACK for c in cuts):
+        return True
+    if frame_size is not None and last_real in track.frames:
+        w, h = frame_size
+        x, y, bw, bh = track.frames[last_real]
+        mx, my = w * EDGE_MARGIN, h * EDGE_MARGIN
+        if x <= mx or y <= my or x + bw >= w - mx or y + bh >= h - my:
+            return True
+    return False
+
+
+def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: int | None = None, cuts=frozenset()) -> dict:
+    """Without frame_size/frame_count/cuts every held run is reported (old behaviour)."""
     raw: list[dict] = []  # {type, trackIds, start, end, box}
 
     def add(kind, ids, a, b, boxes_at):
@@ -52,7 +70,12 @@ def build_review(tracks: list[Track], fps: int) -> dict:
     for t in tracks:
         for a, b in _low_confidence(t):
             add("low_confidence", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]])
+        real = [f for f in t.scores if f in t.frames and f not in t.held]
+        last_real = max(real) if real else None
         for a, b in _runs([f for f in t.held if f in t.frames]):
+            trailing = last_real is not None and a > last_real
+            if trailing and _trailing_gap_explained(t, last_real, b, fps, frame_size, frame_count, cuts):
+                continue
             add("gap", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]])
 
     per_frame: dict[int, list[tuple[str, tuple]]] = {}
