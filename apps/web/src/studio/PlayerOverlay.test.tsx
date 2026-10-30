@@ -1,5 +1,5 @@
 import { createRef } from 'react';
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PlayerOverlay } from './PlayerOverlay';
 
@@ -35,5 +35,17 @@ describe('PlayerOverlay frame clock', () => {
     Object.defineProperty(ref.current!, 'currentTime', { configurable: true, value: 2.04 });
     fireEvent(ref.current!, new Event('timeupdate'));
     expect(onFrame).toHaveBeenLastCalledWith(61);
+  });
+});
+
+describe('PlayerOverlay frame step', () => {
+  it('calls onStep with -1 / +1', () => {
+    const onStep = vi.fn();
+    const ref = createRef<HTMLVideoElement>();
+    render(<PlayerOverlay {...base} videoRef={ref as never} onFrame={vi.fn()} onStep={onStep} />);
+    fireEvent.click(screen.getByRole('button', { name: '1프레임 뒤로' }));
+    expect(onStep).toHaveBeenLastCalledWith(-1);
+    fireEvent.click(screen.getByRole('button', { name: '1프레임 앞으로' }));
+    expect(onStep).toHaveBeenLastCalledWith(1);
   });
 });

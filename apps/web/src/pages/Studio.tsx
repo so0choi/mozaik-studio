@@ -241,11 +241,11 @@ export function Studio() {
   );
 
   // the focused item; falls back to the first unresolved one (e.g. after the active item was resolved elsewhere).
-  // A crossing being split stays active even if the split already made it non-required.
+  // A crossing being split (or marked not-a-face) stays active even if the split already made it non-required.
   const activeItem = useMemo(() => {
     const inQueue = unresolved.find((i) => i.id === activeId);
     if (inQueue) return inQueue;
-    if (stageState.stage === 'split' && stageState.id === activeId) {
+    if ((stageState.stage === 'split' || stageState.stage === 'notface') && stageState.id === activeId) {
       const it = reviewItems.find((i) => i.id === activeId);
       if (it) return it;
     }
@@ -283,6 +283,16 @@ export function Studio() {
     [fps, tracks],
   );
   const pause = () => videoRef.current?.pause?.call(videoRef.current);
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) void v.play()?.catch?.(() => undefined);
+    else v.pause();
+  };
+  const stepFrame = (delta: number) => {
+    pause();
+    seek(frame + delta);
+  };
 
   // ---- gallery actions ----
   const toggleVisible = useCallback(
@@ -442,12 +452,13 @@ export function Studio() {
       if (!activeItem || stage !== 'problem' || n < 1 || n > optionCount(activeItem.type)) return;
       if (activeItem.type === 'crossing') {
         if (n === 1) swapSplit(activeItem);
-        else addBoxFor(activeItem.id);
+        else if (n === 2) addBoxFor(activeItem.id);
+        else setStage('notface');
       } else if (n === 1) addBoxFor(activeItem.id);
       else if (n === 2) notAFace(activeItem);
       else addBoxFor(activeItem.id, true);
     },
-    [activeItem, stage, swapSplit, addBoxFor, notAFace],
+    [activeItem, stage, swapSplit, addBoxFor, notAFace, setStage],
   );
 
   // ---- manual box ----
@@ -612,7 +623,7 @@ export function Studio() {
       case 'Enter':
         if (onControl || !canAct) return;
         if (stage === 'ask') resolveItem(activeItem!.id);
-        else if (stage === 'split') resolveItem(activeItem!.id);
+        else if (stage === 'split' || stage === 'notface') resolveItem(activeItem!.id);
         else handled = false;
         break;
       case 'x':
@@ -639,6 +650,15 @@ export function Studio() {
       case 'b':
       case 'B':
         toggleBox();
+        break;
+      case ' ':
+        // always play/pause (even on a focused button or the timeline) so a mouse-clicked
+        // 괜찮음 is never pressed again by Space; preventDefault also blocks the native click
+        togglePlay();
+        break;
+      case ',':
+      case '.':
+        stepFrame(e.key === '.' ? 1 : -1);
         break;
       default:
         return;
@@ -763,6 +783,7 @@ export function Studio() {
             highlight={highlight}
             focusBoxes={focusBoxes}
             onFrame={setFrame}
+            onStep={stepFrame}
           >
             {(rect) =>
               boxMode && (
@@ -894,6 +915,8 @@ export function Studio() {
             <span><kbd>Esc</kbd>뒤로</span>
             <span><kbd>←</kbd><kbd>→</kbd>이동</span>
             <span><kbd>B</kbd>박스 그리기</span>
+            <span><kbd>Space</kbd>재생/정지</span>
+            <span><kbd>,</kbd><kbd>.</kbd>1프레임</span>
           </div>
         </aside>
       </main>

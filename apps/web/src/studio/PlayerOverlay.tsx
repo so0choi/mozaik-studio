@@ -22,6 +22,8 @@ interface Props {
   /** outline of the selected person at a frame (source pixels) */
   focusBoxes: (frame: number) => Box[];
   onFrame: (frame: number) => void;
+  /** step the playhead by whole frames (pauses first) */
+  onStep?: (delta: number) => void;
   /** rendered over the video (e.g. the box drawing tool); receives the content rect */
   children?: (rect: Rect) => ReactNode;
 }
@@ -227,6 +229,16 @@ function PlayerOverlayInner(props: Props) {
         <button type="button" className="ic" onClick={back} aria-label="5초 뒤로">
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M8 3v3L3.5 3.5 8 1v2a6 6 0 11-6 6h1.6A4.4 4.4 0 108 3z" transform="translate(0 1)" />
+          </svg>
+        </button>
+        <button type="button" className="ic" onClick={() => props.onStep?.(-1)} aria-label="1프레임 뒤로">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 2h2v12H3zM13 2.5v11L6 8z" />
+          </svg>
+        </button>
+        <button type="button" className="ic" onClick={() => props.onStep?.(1)} aria-label="1프레임 앞으로">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M11 2h2v12h-2zM3 2.5v11L10 8z" />
           </svg>
         </button>
         <div className="time" data-testid="time">

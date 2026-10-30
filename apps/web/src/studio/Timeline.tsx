@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import { formatDuration, formatTime } from '../lib/frames';
 import type { Person, ReviewItem } from '../lib/types';
 
@@ -20,10 +20,34 @@ function TimelineInner(p: Props) {
   const pct = (f: number) => `${(Math.min(f, total) / total) * 100}%`;
   const durSec = p.frameCount / p.fps;
   const ticks = Array.from({ length: 6 }, (_, i) => formatTime((durSec * i) / 5));
+  const dragging = useRef(false);
   const seekFromEvent = (e: React.MouseEvent<HTMLElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     if (!r.width) return;
-    p.onSeek(Math.round(((e.clientX - r.left) / r.width) * total));
+    const x = Math.min(Math.max(e.clientX - r.left, 0), r.width);
+    p.onSeek(Math.round((x / r.width) * total));
+  };
+  const onPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest?.('.mk')) return;
+    dragging.current = true;
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* not capturable */
+    }
+    seekFromEvent(e);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (dragging.current) seekFromEvent(e);
+  };
+  const endDrag = (e: React.PointerEvent<HTMLElement>) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    } catch {
+      /* already released */
+    }
   };
   const segs = p.person?.segments ?? [];
   const marker = (m: ReviewItem, resolved: boolean) => (
@@ -44,7 +68,17 @@ function TimelineInner(p: Props) {
           {p.person ? `${segs.length}구간 · 총 ${formatDuration(p.person.appearSec)}` : '인물을 선택하세요'}
         </span>
       </div>
-      <div className="tlw">
+      <div
+        className="tlw"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <div className="mkl">
+          {p.unresolved.map((m) => marker(m, false))}
+          {p.resolved.map((m) => marker(m, true))}
+        </div>
         <div
           className="track"
           role="slider"
@@ -73,10 +107,6 @@ function TimelineInner(p: Props) {
               style={{ left: pct(a), width: `${((b - a + 1) / total) * 100}%` }}
             />
           ))}
-        </div>
-        <div>
-          {p.unresolved.map((m) => marker(m, false))}
-          {p.resolved.map((m) => marker(m, true))}
         </div>
         <div className="ph" style={{ left: pct(p.frame) }} />
       </div>

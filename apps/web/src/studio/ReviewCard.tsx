@@ -14,7 +14,7 @@ const EXPLAIN: Record<ReviewType, string> = {
   crossing: '두 사람이 겹쳐 지나가는 구간입니다. 가림이 서로 바뀌지 않았는지 확인하세요.',
 };
 
-export type ReviewStage = 'ask' | 'problem' | 'split';
+export type ReviewStage = 'ask' | 'problem' | 'split' | 'notface';
 
 interface Option {
   label: string;
@@ -28,6 +28,7 @@ const FACE_OPTIONS: Option[] = [
 const CROSSING_OPTIONS: Option[] = [
   { label: '두 사람이 바뀌었어요', hint: '현재 위치에서 인물을 나눕니다. 나뉜 뒤 각 조각의 가림/보임을 고르세요' },
   { label: '얼굴이 보여요', hint: '보이는 얼굴 위에 박스를 그리면 앞뒤로 따라가며 가립니다' },
+  { label: '둘 중 하나가 얼굴이 아니에요', hint: '얼굴이 아닌 쪽을 보임으로 바꾸세요' },
 ];
 export const optionCount = (type: ReviewType) => (type === 'crossing' ? CROSSING_OPTIONS.length : FACE_OPTIONS.length);
 
@@ -94,9 +95,9 @@ function ReviewCardInner(p: CardProps) {
         <div className="trk" role="status">
           <i className="spin" /> 추적 중…
         </div>
-      ) : p.stage === 'split' ? (
+      ) : p.stage === 'split' || p.stage === 'notface' ? (
         <>
-          <div className="q">나뉜 조각</div>
+          <div className="q">{p.stage === 'split' ? '나뉜 조각' : '얼굴이 아닌 쪽을 보임으로'}</div>
           <div className="opts">
             {p.splitPeople.map((person) => (
               <div className="piece" key={person.key}>
@@ -113,6 +114,9 @@ function ReviewCardInner(p: CardProps) {
               </div>
             ))}
           </div>
+          {p.stage === 'notface' && (
+            <p className="expl">보임으로 바꾼 뒤 교차 구간을 재생해 얼굴이 드러나지 않는지 확인하세요</p>
+          )}
           <div className="acts">
             <button type="button" className="act pri" onClick={p.onSplitDone}>
               완료 <kbd>Enter</kbd>

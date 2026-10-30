@@ -379,6 +379,40 @@ describe('Studio ReviewCard', () => {
       expect((puts(calls)[0].body as Edits).reviewed).toEqual(['r9']);
     });
 
+    it('option 3 (둘 중 하나가 얼굴이 아니에요) lists people unchanged; toggling one 보임 then 완료 PUTs visible + reviewed', async () => {
+      const calls = setup({ review: crossingReview, edits: withT1Visible });
+      const c = await screen.findByTestId('review-r9');
+      await userEvent.click(within(c).getByRole('button', { name: /문제 있음/ }));
+      await userEvent.click(within(c).getByRole('button', { name: /둘 중 하나가 얼굴이 아니에요/ }));
+      expect(within(c).getByText(/보임으로 바꾼 뒤 교차 구간을 재생해/)).toBeInTheDocument();
+      expect(within(c).getByRole('switch', { name: '인물 1 보임 설정' })).toHaveAttribute('aria-checked', 'true');
+      expect(within(c).getByRole('switch', { name: '인물 2 보임 설정' })).toHaveAttribute('aria-checked', 'false');
+      await sleep(700);
+      expect(puts(calls).length).toBe(0); // nothing auto-unmasked
+      await userEvent.click(within(c).getByRole('switch', { name: '인물 2 보임 설정' }));
+      // item is no longer required but stays active in the notface panel
+      const still = screen.getByTestId('review-r9');
+      await userEvent.click(within(still).getByRole('button', { name: /완료/ }));
+      await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
+      const body = puts(calls)[0].body as Edits;
+      expect([...body.visible].sort()).toEqual(['t1', 't2']);
+      expect(body.splits).toEqual([]);
+      expect(body.reviewed).toEqual(['r9']);
+      expect(screen.queryByTestId('review-r9')).toBeNull();
+    });
+
+    it('keyboard 3 enters notface, Enter completes, Escape goes back to ask', async () => {
+      const calls = setup({ review: crossingReview, edits: withT1Visible });
+      const c = await screen.findByTestId('review-r9');
+      await userEvent.keyboard('x3');
+      expect(within(c).getByRole('switch', { name: '인물 2 보임 설정' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      expect(within(c).getByRole('button', { name: /괜찮음/ })).toBeInTheDocument();
+      await userEvent.keyboard('x3{Enter}');
+      await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
+      expect((puts(calls)[0].body as Edits).reviewed).toEqual(['r9']);
+    });
+
     it('option 2 (얼굴이 보여요) opens the box tool', async () => {
       setup({ review: crossingReview, edits: withT1Visible });
       const c = await screen.findByTestId('review-r9');
@@ -386,6 +420,67 @@ describe('Studio ReviewCard', () => {
       await userEvent.click(within(c).getByRole('button', { name: /얼굴이 보여요/ }));
       expect(screen.getByTestId('boxtool')).toBeInTheDocument();
     });
+  });
+});
+
+describe('Studio seeking and playback keys', () => {
+  const video = () => screen.getByLabelText('미리보기 영상') as HTMLVideoElement;
+  const mockPlay = HTMLMediaElement.prototype.play as unknown as ReturnType<typeof vi.fn>;
+  const mockPause = HTMLMediaElement.prototype.pause as unknown as ReturnType<typeof vi.fn>;
+
+  it('frame-step buttons move one frame and pause', async () => {
+    setup();
+    await card('t1');
+    mockPause.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: '1프레임 앞으로' }));
+    expect(video().currentTime).toBeCloseTo(1 / 30);
+    await userEvent.click(screen.getByRole('button', { name: '1프레임 앞으로' }));
+    expect(video().currentTime).toBeCloseTo(2 / 30);
+    await userEvent.click(screen.getByRole('button', { name: '1프레임 뒤로' }));
+    expect(video().currentTime).toBeCloseTo(1 / 30);
+    expect(mockPause).toHaveBeenCalled();
+  });
+
+  it('. and , step one frame (and never below 0)', async () => {
+    setup();
+    await card('t1');
+    await userEvent.keyboard('..');
+    expect(video().currentTime).toBeCloseTo(2 / 30);
+    await userEvent.keyboard(',,,');
+    expect(video().currentTime).toBeCloseTo(0);
+  });
+
+  it('Space plays a paused video and pauses a playing one', async () => {
+    setup();
+    await card('t1');
+    mockPlay.mockClear();
+    mockPause.mockClear();
+    await userEvent.keyboard(' ');
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+    Object.defineProperty(video(), 'paused', { configurable: true, value: false });
+    await userEvent.keyboard(' ');
+    expect(mockPause).toHaveBeenCalledTimes(1);
+  });
+
+  it('Space does nothing in the search input or in box mode, and on a focused button plays instead of clicking', async () => {
+    setup();
+    await card('t1');
+    mockPlay.mockClear();
+    const input = screen.getByRole('searchbox', { name: '인물 검색' });
+    await userEvent.click(input);
+    await userEvent.keyboard(' ');
+    expect(mockPlay).not.toHaveBeenCalled();
+    input.blur();
+    screen.getByRole('button', { name: /문제 있음/ }).focus();
+    await userEvent.keyboard(' ');
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /얼굴이 아니에요/ })).toBeNull(); // the button was not clicked
+    mockPlay.mockClear();
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.keyboard('b');
+    expect(screen.getByTestId('boxtool')).toBeInTheDocument();
+    await userEvent.keyboard(' ');
+    expect(mockPlay).not.toHaveBeenCalled();
   });
 });
 
