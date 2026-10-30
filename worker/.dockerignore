@@ -1,0 +1,6 @@
+models/*.onnx
+tests/assets/
+__pycache__/
+**/__pycache__/
+*.egg-info/
+.pytest_cache/
