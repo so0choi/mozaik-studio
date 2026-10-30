@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { SkipLink } from './Header';
@@ -9,6 +9,18 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Server has login turned off (AUTH_DISABLED): go straight to the job list.
+  useEffect(() => {
+    let live = true;
+    api
+      .me()
+      .then((me) => live && me.authDisabled && navigate('/', { replace: true }))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [navigate]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();

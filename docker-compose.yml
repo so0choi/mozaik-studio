@@ -13,6 +13,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       STUDIO_USERS: ${STUDIO_USERS:?set STUDIO_USERS in .env}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+      AUTH_ANON_USER: ${AUTH_ANON_USER:-guest}
     volumes:
       - jobs-data:/data
     depends_on:

@@ -42,6 +42,6 @@ export class AuthController {
 
   @Get('me')
   me(@Req() req: any) {
-    return { username: req.user.username };
+    return this.cfg.anonUser ? { username: req.user.username, authDisabled: true } : { username: req.user.username };
   }
 }

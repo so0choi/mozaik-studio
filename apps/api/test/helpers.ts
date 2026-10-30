@@ -33,6 +33,8 @@ export async function createApp(env: Record<string, string> = {}): Promise<TestC
     COOKIE_SECURE: 'false',
   });
   delete process.env.MAX_UPLOAD_BYTES;
+  delete process.env.AUTH_DISABLED;
+  delete process.env.AUTH_ANON_USER;
   Object.assign(process.env, env);
   const redis = new RedisMock();
   await redis.flushall();

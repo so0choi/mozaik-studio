@@ -35,6 +35,14 @@ const fmtDate = (iso: string) => {
 export function Jobs() {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [authDisabled, setAuthDisabled] = useState(false);
+
+  useEffect(() => {
+    api
+      .me()
+      .then((me) => setAuthDisabled(Boolean(me.authDisabled)))
+      .catch(() => undefined);
+  }, []);
   const [error, setError] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [progress, setProgress] = useState<number | null>(null);
@@ -98,9 +106,11 @@ export function Jobs() {
     <>
       <Header>
         <div className="sp" />
-        <button type="button" className="link-btn" onClick={() => void logout()}>
-          로그아웃
-        </button>
+        {!authDisabled && (
+          <button type="button" className="link-btn" onClick={() => void logout()}>
+            로그아웃
+          </button>
+        )}
       </Header>
       <main id="main" className="page">
         <div className="page-in">

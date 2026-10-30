@@ -14,6 +14,10 @@ export class JwtCookieGuard implements CanActivate {
   canActivate(ctx: ExecutionContext): boolean {
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [ctx.getHandler(), ctx.getClass()])) return true;
     const req = ctx.switchToHttp().getRequest();
+    if (this.cfg.anonUser) {
+      req.user = { username: this.cfg.anonUser };
+      return true;
+    }
     const token = req.cookies?.[COOKIE_NAME];
     if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
     try {

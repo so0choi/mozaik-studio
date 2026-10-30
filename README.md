@@ -35,6 +35,8 @@ web (React, nginx :8080) ──/api──▶ api (NestJS :3000) ──Redis 리�
 
 로컬에서 만든 테스트 계정 `demo`의 비밀번호는 `.env`의 `DEMO_PASSWORD`에 있다.
 
+**로그인 끄기(프로토타입용):** `.env`에 `AUTH_DISABLED=true`를 넣으면 로그인 없이 모든 요청이 `AUTH_ANON_USER`(기본 `guest`) 사용자로 처리된다. 8080 포트에 접근할 수 있는 누구나 모든 작업을 보고 지울 수 있으므로 로컬이나 사내망에서만 쓴다. 다시 켜려면 줄을 지우거나 `false`로 바꾸고 `docker compose up -d api`.
+
 ## 알려진 한계
 
 - 사내 인증은 환경변수 계정 목록이다. SSO가 정해지면 `apps/api/src/auth/jwt-cookie.guard.ts`만 교체한다.
