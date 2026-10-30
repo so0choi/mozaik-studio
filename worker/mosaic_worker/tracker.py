@@ -143,7 +143,10 @@ class Tracker:
         pairs2, un_t2, un_low = self._match(rest, low, preds)
         matched += [(rest[ti], low[di]) for ti, di in pairs2]
         unmatched_tracks = [rest[i] for i in un_t2]
-        new_dets = [high[i] for i in un_high] + [low[i] for i in un_low]
+        # ByteTrack rule: only confident detections start tracks; low-score ones may only
+        # extend an existing track (stage 2 above). Starting tracks from them turned
+        # food/texture hits into held mosaics.
+        new_dets = [high[i] for i in un_high]
 
         for tr, det in matched:
             self._apply(tr, frame_idx, det)

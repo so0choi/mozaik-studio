@@ -128,3 +128,18 @@ def test_block_size_and_segments():
     tiny = run(30, [[D(10, 10, 20, 20)] for _ in range(3)])[0]
     assert block_size(tiny) == 8
     assert to_segments([1, 2, 3, 7, 8, 20]) == [[1, 3], [7, 8], [20, 20]]
+
+
+def test_low_score_detection_never_starts_a_track():
+    # ByteTrack rule: scores below HIGH_SCORE (0.6) may only extend an existing track.
+    # Regression: food/texture hits at 0.5-0.6 each became a 0.5s held mosaic.
+    tracks = run(60, [[D(400, 300, s=0.55)]] + [[] for _ in range(40)])
+    assert tracks == []
+
+
+def test_low_score_face_seen_strongly_once_stays_covered():
+    # A partly hidden face: one confident hit, then only weak hits -> one continuous track.
+    dets = [[D(100, 100, s=0.65)]] + [[D(100 + i, 100, s=0.55)] for i in range(1, 30)]
+    tracks = run(60, dets)
+    assert len(tracks) == 1
+    assert len(tracks[0].frames) == 30
