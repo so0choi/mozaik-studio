@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tracksDoc, reviewDoc } from '../lib/fixtures';
 import type { Edits, Job } from '../lib/types';
 import { installFetch, type Call, type Handler } from '../test/mockFetch';
@@ -226,5 +226,46 @@ describe('Studio split and manual box', () => {
     else delete proto.clientWidth;
     if (orig[1]) Object.defineProperty(proto, 'clientHeight', orig[1]);
     else delete proto.clientHeight;
+  });
+});
+
+describe('Studio suspect tracks', () => {
+  const suspectDoc = {
+    ...tracksDoc,
+    tracks: tracksDoc.tracks.map((t) => (t.id === 't1' || t.id === 't3' ? { ...t, suspect: true } : t)),
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows badge on suspect cards and the summary count', async () => {
+    setup({ tracks: suspectDoc });
+    expect(within(await card('t1')).getByText('얼굴 아닐 수 있음')).toBeInTheDocument();
+    expect(within(await card('t3')).getByText('얼굴 아닐 수 있음')).toBeInTheDocument();
+    expect(within(await card('t2')).queryByText('얼굴 아닐 수 있음')).toBeNull();
+    expect(screen.getByText('얼굴이 아닐 수 있는 항목 2개')).toBeInTheDocument();
+  });
+
+  it('confirm=true shows all suspects via one debounced PUT', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const calls = setup({ tracks: suspectDoc });
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: '확인 후 모두 보임' }));
+    expect(confirm).toHaveBeenCalledWith(
+      '얼굴 아닐 수 있음으로 표시된 2개를 모두 보이게 합니다. 썸네일을 확인하셨나요?',
+    );
+    await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
+    await sleep(700);
+    expect(puts(calls).length).toBe(1);
+    expect([...(puts(calls)[0].body as Edits).visible].sort()).toEqual(['t1', 't3']);
+    expect(screen.queryByText(/얼굴이 아닐 수 있는 항목/)).toBeNull();
+  });
+
+  it('confirm=false sends nothing', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const calls = setup({ tracks: suspectDoc });
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: '확인 후 모두 보임' }));
+    await sleep(800);
+    expect(puts(calls).length).toBe(0);
+    expect(screen.getByText('얼굴이 아닐 수 있는 항목 2개')).toBeInTheDocument();
   });
 });

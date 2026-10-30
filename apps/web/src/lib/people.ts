@@ -58,6 +58,7 @@ export function people(doc: TracksDoc, edits: Edits): Person[] {
       appearSec: frames / doc.fps,
       segments: mergeSegments(segs),
       isGroup,
+      suspect: ps.every((p) => p.track.suspect === true),
     };
   };
 
@@ -75,5 +76,6 @@ export function people(doc: TracksDoc, edits: Edits): Person[] {
     }
     out.push(build(p.id, [p.id], undefined, false));
   }
-  return out;
+  // non-suspect first, suspects last; stable within each part
+  return [...out.filter((p) => !p.suspect), ...out.filter((p) => p.suspect)];
 }

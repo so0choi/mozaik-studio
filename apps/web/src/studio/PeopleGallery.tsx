@@ -13,6 +13,7 @@ interface Props {
   onMerge: () => void;
   onCancelSelect: () => void;
   onRename: (key: string, label: string) => void;
+  onShowSuspects: () => void;
 }
 
 function NameInput({ person, onRename }: { person: Person; onRename: (key: string, label: string) => void }) {
@@ -47,6 +48,15 @@ function NameInput({ person, onRename }: { person: Person; onRename: (key: strin
 
 function PeopleGalleryInner(p: Props) {
   const count = p.people.length;
+  const hiddenSuspects = p.people.filter((x) => x.suspect && !x.visible).length;
+  const showSuspects = () => {
+    if (
+      window.confirm(
+        `얼굴 아닐 수 있음으로 표시된 ${hiddenSuspects}개를 모두 보이게 합니다. 썸네일을 확인하셨나요?`,
+      )
+    )
+      p.onShowSuspects();
+  };
   return (
     <section className="left" aria-labelledby="title">
       <div className="lhead">
@@ -54,6 +64,14 @@ function PeopleGalleryInner(p: Props) {
         <p className="hint">기본은 모두 가림 · 보일 사람만 켜세요</p>
       </div>
       <div className="gridwrap">
+        {hiddenSuspects > 0 && (
+          <div className="suspectbar">
+            <span>얼굴이 아닐 수 있는 항목 {hiddenSuspects}개</span>
+            <button type="button" onClick={showSuspects}>
+              확인 후 모두 보임
+            </button>
+          </div>
+        )}
         {count === 0 ? (
           <p className="noppl">검출된 얼굴이 없습니다</p>
         ) : (
@@ -81,6 +99,7 @@ function PeopleGalleryInner(p: Props) {
                     </span>
                   </button>
                   {person.visible && <span className="badge">보임</span>}
+                  {person.suspect && <span className="badge-suspect">얼굴 아닐 수 있음</span>}
                   <button
                     type="button"
                     className="avatar"

@@ -12,6 +12,7 @@ from .review import build_review
 from .status import MSG_ANALYZE_FAILED, UserFacingError, atomic_write_json
 from .thumbs import ThumbCollector
 from .tracker import Tracker, block_size, to_segments
+from .verify import TrackVerifier
 
 Progress = Callable[[str, int], None]
 
@@ -25,6 +26,7 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
         raise UserFacingError(MSG_ANALYZE_FAILED)
     tracker = Tracker(meta.fps, frame_size=(meta.width, meta.height))
     thumbs = ThumbCollector(meta.fps)
+    verifier = TrackVerifier()
     last_pct = -1
     try:
         idx = 0
@@ -34,6 +36,7 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
                 break
             assigned = tracker.update(idx, detector.detect(frame))
             thumbs.observe(idx, frame, assigned)
+            verifier.observe(frame, assigned)
             idx += 1
             if progress:
                 pct = min(99, int(idx * 100 / max(1, meta.frame_count)))
@@ -42,10 +45,13 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
                     progress("analyzing", pct)
     finally:
         cap.release()
-    return tracker.finish(), thumbs
+    tracks = tracker.finish()
+    # Only a hint for the reviewer: suspect tracks stay masked like every other track.
+    suspects = {t.id for t in tracks if not verifier.keep(t.id)}
+    return tracks, thumbs, suspects
 
 
-def build_tracks_doc(meta: Meta, tracks, thumb_info: dict) -> dict:
+def build_tracks_doc(meta: Meta, tracks, thumb_info: dict, suspects: set[str] | frozenset = frozenset()) -> dict:
     docs = []
     for t in tracks:
         info = thumb_info.get(t.id, {"thumb": None, "samples": []})
@@ -58,6 +64,7 @@ def build_tracks_doc(meta: Meta, tracks, thumb_info: dict) -> dict:
                 "segments": to_segments(t.frames),
                 "frames": {str(f): list(b) for f, b in sorted(t.frames.items())},
                 "scores": {str(f): round(s, 4) for f, s in sorted(t.scores.items())},
+                "suspect": t.id in suspects,
             }
         )
     return {
@@ -75,9 +82,9 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     job_dir = Path(job_dir)
     meta = meta or load_meta(job_dir)
     detector = detector or FaceDetector()
-    tracks, thumbs = detect_and_track(job_dir / "normalized.mp4", meta, detector, progress)
+    tracks, thumbs, suspects = detect_and_track(job_dir / "normalized.mp4", meta, detector, progress)
     info = thumbs.write([t.id for t in tracks], job_dir)
-    atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info))
+    atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, suspects))
     atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps))
     if progress:
         progress("analyzing", 100)

@@ -239,3 +239,7 @@ a.btn-primary{text-decoration:none}
 .q .tracking{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--warn-ink)}
 .q .failed{font-size:13px;font-weight:700;color:var(--warn-ink)}
 .q .acts button:disabled{opacity:.4}
+
+.badge-suspect{position:absolute;top:var(--s3);left:44px;font-size:12px;font-weight:700;color:var(--warn-ink);background:var(--warn-bg);padding:2px var(--s2);border-radius:99px;border:1px solid var(--warn)}
+.suspectbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin-bottom:var(--s3);padding:6px var(--s3);border-radius:var(--r-s);background:var(--warn-bg);color:var(--warn-ink);font-size:14px;font-weight:700}
+.suspectbar button{font:inherit;font-weight:700;color:var(--warn-ink);background:transparent;border:1px solid var(--warn);border-radius:var(--r-s);padding:4px var(--s3);cursor:pointer}
