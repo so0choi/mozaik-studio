@@ -1,6 +1,6 @@
 import { people } from './people';
 import { splitFrames } from './pieces';
-import type { Edits, ManualEdit, Person, TracksDoc } from './types';
+import type { Box, Edits, ManualEdit, Person, TracksDoc } from './types';
 
 export function emptyEdits(): Edits {
   return { version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [] };
@@ -115,4 +115,31 @@ export function nextManualId(edits: Edits): string {
     return k ? Math.max(m, Number(k[1])) : m;
   }, 0);
   return `m${n + 1}`;
+}
+
+function mapManual(edits: Edits, manualId: string, fn: (m: ManualEdit) => ManualEdit): Edits {
+  if (!edits.manual.some((m) => m.id === manualId)) return edits;
+  return { ...edits, manual: edits.manual.map((m) => (m.id === manualId ? fn(m) : m)) };
+}
+
+/** Set (or clear with null) the [start, end] frame trim of a manual box. */
+export function setManualTrim(edits: Edits, manualId: string, trim: [number, number] | null): Edits {
+  return mapManual(edits, manualId, (m) => ({ ...m, trim }));
+}
+
+/** Soft-delete: the entry stays (so ids are never reused) but is ignored by masks and the worker. */
+export function deleteManual(edits: Edits, manualId: string): Edits {
+  return mapManual(edits, manualId, (m) => ({ ...m, deleted: true }));
+}
+
+/** Add an anchor to a manual box, replacing any anchor already at the same frame. */
+export function addManualAnchor(
+  edits: Edits,
+  manualId: string,
+  anchor: { frame: number; box: Box },
+): Edits {
+  return mapManual(edits, manualId, (m) => ({
+    ...m,
+    anchors: [...m.anchors.filter((a) => a.frame !== anchor.frame), anchor],
+  }));
 }

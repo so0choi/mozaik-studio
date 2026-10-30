@@ -36,3 +36,15 @@ export function clampBox(box: Box, srcW: number, srcH: number): Box {
   const h = Math.max(1, Math.min(srcH - y, box[3]));
   return [Math.round(x), Math.round(y), Math.round(w), Math.round(h)];
 }
+
+/** Grow a box by `factor` around its center, then intersect with the video frame (integer edges). */
+export function enlargeBox(box: Box, factor: number, srcW: number, srcH: number): Box {
+  const [x, y, w, h] = box;
+  const nw = w * factor;
+  const nh = h * factor;
+  const x0 = Math.max(0, Math.round(x + w / 2 - nw / 2));
+  const y0 = Math.max(0, Math.round(y + h / 2 - nh / 2));
+  const x1 = Math.min(srcW, Math.round(x + w / 2 + nw / 2));
+  const y1 = Math.min(srcH, Math.round(y + h / 2 + nh / 2));
+  return [x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)];
+}
