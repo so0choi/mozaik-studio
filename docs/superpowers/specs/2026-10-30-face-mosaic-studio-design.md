@@ -90,6 +90,9 @@
 { "items": [ { "id": "r1", "type": "low_confidence|gap|crossing", "trackIds": ["t4"], "startFrame": 1260, "endFrame": 1300, "box": [x,y,w,h] } ] }
 ```
 생성 규칙: 낮은 신뢰도(트랙 구간 평균 점수 < 0.6, 15프레임 이상), gap(gap-hold로 채운 구간), 교차(두 트랙 박스 IoU > 0.1인 구간). 인접 항목은 1초 이내면 병합.
+트랙이 끝나며 생긴 gap은 얼굴이 화면 밖으로 나갔거나(마지막 박스가 가장자리 3% 이내), 장면 전환(HSV 히스토그램 거리 > 0.5)이 있었거나, 영상이 끝난 경우 만들지 않는다.
+
+**검수 필수 규칙 (API 렌더 게이트와 웹이 같은 함수로 계산):** 이미 reviewed면 필수 아님. gap·low_confidence는 그 트랙이 가림 상태일 때만 필수. crossing은 한쪽이 보임이고 다른 쪽이 가림일 때만 필수 (둘 다 가림이면 ID가 바뀌어도 노출되지 않음). 분할 조각(`t2a`/`t2b`)은 하나라도 보임이면 보임, 둘 다 보임이어야 가림 아님으로 본다. 구현: `apps/api/src/jobs/review-required.ts`, `apps/web/src/lib/reviewRequired.ts`.
 
 ### 3.5 `edits.json` (web 소유, api가 검증 후 저장)
 ```json

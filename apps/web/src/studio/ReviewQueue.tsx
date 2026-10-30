@@ -11,6 +11,7 @@ const TYPE_LABEL: Record<ReviewType, string> = {
 interface Props {
   items: ReviewItem[];
   done: ReviewItem[];
+  hiddenCount: number;
   activeId: string | null;
   fps: number;
   whoOf: (item: ReviewItem) => string;
@@ -82,6 +83,11 @@ function ReviewQueueInner(p: Props) {
           );
         })}
       </div>
+      {p.hiddenCount > 0 && (
+        <p className="muted" data-testid="hidden-note" style={{ margin: '8px 16px', fontSize: 13, color: 'var(--muted, #6b7280)' }}>
+          지금 가림 상태로는 노출 위험이 없는 항목 {p.hiddenCount}개는 숨겼습니다
+        </p>
+      )}
       <button type="button" className="fold" aria-expanded={open} aria-controls="dlist" onClick={() => setOpen(!open)}>
         <span>확인 완료 ({p.done.length})</span>
         <svg className="chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">

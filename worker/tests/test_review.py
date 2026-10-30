@@ -63,3 +63,48 @@ def test_ids_and_box_shape():
     t = mk("t1", range(0, 30), held=range(10, 15))
     it = build_review([t], 30)["items"][0]
     assert it["id"] == "r1" and len(it["box"]) == 4 and all(isinstance(v, int) for v in it["box"])
+
+
+# --- trailing gaps (the track ended): only keep the ones that can hide a still-present face ---
+SIZE = (640, 360)
+
+
+def trailing(box=(300, 150, 50, 50)):
+    # detected 0..29, then held 30..44 and lost
+    return mk("t1", range(0, 45), box=box, held=range(30, 45))
+
+
+def gaps(items):
+    return [i for i in items if i["type"] == "gap"]
+
+
+def test_trailing_gap_mid_screen_without_cut_is_kept():
+    items = build_review([trailing()], 30, frame_size=SIZE, frame_count=300, cuts=set())["items"]
+    assert len(gaps(items)) == 1
+
+
+def test_trailing_gap_at_frame_edge_is_dropped():
+    # the face walked out of the frame
+    items = build_review([trailing(box=(2, 150, 50, 50))], 30, frame_size=SIZE, frame_count=300, cuts=set())["items"]
+    assert gaps(items) == []
+
+
+def test_trailing_gap_after_scene_cut_is_dropped():
+    items = build_review([trailing()], 30, frame_size=SIZE, frame_count=300, cuts={31})["items"]
+    assert gaps(items) == []
+
+
+def test_trailing_gap_far_from_scene_cut_is_kept():
+    items = build_review([trailing()], 30, frame_size=SIZE, frame_count=300, cuts={200})["items"]
+    assert len(gaps(items)) == 1
+
+
+def test_trailing_gap_at_video_end_is_dropped():
+    items = build_review([trailing()], 30, frame_size=SIZE, frame_count=45, cuts=set())["items"]
+    assert gaps(items) == []
+
+
+def test_bridged_gap_is_kept_even_near_edge_or_cut():
+    t = mk("t1", range(0, 30), box=(2, 150, 50, 50), held=range(10, 15))
+    items = build_review([t], 30, frame_size=SIZE, frame_count=300, cuts={11})["items"]
+    assert len(gaps(items)) == 1

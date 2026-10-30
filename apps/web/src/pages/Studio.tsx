@@ -19,6 +19,7 @@ import type { Box, Edits, Job, ManualDoc, ManualState, ReviewItem, TracksDoc } f
 import { BoxTool } from '../studio/BoxTool';
 import { PeopleGallery } from '../studio/PeopleGallery';
 import { PlayerOverlay, type Highlight } from '../studio/PlayerOverlay';
+import { requiredItems } from '../lib/reviewRequired';
 import { ReviewQueue } from '../studio/ReviewQueue';
 import { Timeline } from '../studio/Timeline';
 import { Header } from './Header';
@@ -181,7 +182,9 @@ export function Studio() {
     [tracks, edits, manualDocs],
   );
   const reviewed = useMemo(() => new Set(edits.reviewed), [edits.reviewed]);
-  const unresolved = useMemo(() => reviewItems.filter((i) => !reviewed.has(i.id)), [reviewItems, reviewed]);
+  // only items that can still expose a face given the current visibility edits (same rule as the API)
+  const unresolved = useMemo(() => requiredItems(reviewItems, edits), [reviewItems, edits]);
+  const hiddenCount = reviewItems.length - unresolved.length - reviewItems.filter((i) => reviewed.has(i.id)).length;
   const resolved = useMemo(() => reviewItems.filter((i) => reviewed.has(i.id)), [reviewItems, reviewed]);
   const current = peopleList.find((p) => p.key === currentKey) ?? null;
   const trackingCount = Object.values(manualState).filter((s) => s === 'tracking').length;
@@ -614,6 +617,7 @@ export function Studio() {
           <ReviewQueue
             items={unresolved}
             done={resolved}
+            hiddenCount={hiddenCount}
             activeId={activeId}
             fps={fps}
             whoOf={whoOf}

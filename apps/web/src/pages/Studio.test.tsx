@@ -149,6 +149,29 @@ describe('Studio review and render', () => {
   });
 });
 
+describe('Studio required review items', () => {
+  const crossingReview = { items: [{ id: 'r9', type: 'crossing', trackIds: ['t1', 't2'], startFrame: 10, endFrame: 20, box: [1, 1, 2, 2] }] };
+
+  it('a crossing appears in the queue only after one of its two people is set to 보임', async () => {
+    setup({ review: crossingReview });
+    await card('t1');
+    expect(screen.queryByTestId('review-r9')).toBeNull();
+    expect(screen.getByTestId('note')).toHaveTextContent('모든 항목 확인됨');
+    expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeEnabled();
+    expect(screen.getByTestId('hidden-note')).toHaveTextContent('지금 가림 상태로는 노출 위험이 없는 항목 1개는 숨겼습니다');
+
+    await userEvent.click(within(await card('t1')).getByRole('button', { name: '보임' }));
+    expect(await screen.findByTestId('review-r9')).toBeInTheDocument();
+    expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 1건 남음');
+    expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeDisabled();
+    expect(screen.queryByTestId('hidden-note')).toBeNull();
+
+    await userEvent.click(within(await card('t2')).getByRole('button', { name: '보임' }));
+    await waitFor(() => expect(screen.queryByTestId('review-r9')).toBeNull());
+    expect(screen.getByTestId('hidden-note')).toBeInTheDocument();
+  });
+});
+
 describe('Studio split and manual box', () => {
   it('여기서 분할 adds a split and the person becomes two cards', async () => {
     const calls = setup();
