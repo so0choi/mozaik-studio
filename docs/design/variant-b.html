@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>모자이크 스튜디오 · Gallery First</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/static/woff2/SUIT.css">
+<style>
+:root{--bg:#FAF8F5;--card:#fff;--navy:#1E2A4A;--green:#2F9E6E;--green-bg:#E6F4EC;--muted:#7A7F8C;--line:#ECE8E1;--r:12px}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font-family:'SUIT',system-ui,sans-serif;background:var(--bg);color:var(--navy);overflow:hidden;display:flex;flex-direction:column;min-width:1200px}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+/* top bar */
+.top{height:64px;flex:none;display:flex;align-items:center;padding:0 32px;gap:20px;border-bottom:1px solid var(--line);background:#fff}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;letter-spacing:-.02em}
+.logo i{width:28px;height:28px;border-radius:8px;background:var(--navy);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:1.5px;padding:5px}
+.logo i b{background:#fff;border-radius:1px;opacity:.9}.logo i b:nth-child(2n){opacity:.4}
+.file{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px;padding:6px 12px;background:var(--bg);border-radius:8px}
+.file svg{width:14px;height:14px}
+.sp{flex:1}
+.btn-primary{background:var(--navy);color:#fff;font-weight:700;font-size:15px;padding:11px 20px;border-radius:10px;display:flex;gap:8px;align-items:center;transition:.15s}
+.btn-primary:hover{background:#2a3a63}
+/* layout */
+.main{flex:1;min-height:0;display:grid;grid-template-columns:55% 45%}
+.left{position:relative;overflow-y:auto;padding:28px 32px 0 40px}
+.right{padding:28px 40px 24px 16px;display:flex;flex-direction:column;gap:16px;min-height:0}
+h1{font-size:26px;font-weight:800;letter-spacing:-.03em}
+.hint{color:var(--muted);font-size:14px;margin-top:6px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:22px 0 100px}
+/* card */
+.card{position:relative;background:var(--card);border:2px solid transparent;border-radius:var(--r);padding:16px 14px 14px;box-shadow:0 1px 2px rgba(30,42,74,.05),0 4px 14px rgba(30,42,74,.04);cursor:pointer;transition:.15s;display:flex;flex-direction:column;align-items:center;text-align:center}
+.card:hover{box-shadow:0 2px 4px rgba(30,42,74,.06),0 8px 22px rgba(30,42,74,.08)}
+.card.current{border-color:var(--navy)}
+.card.shown{background:linear-gradient(#F3FAF6,#fff 60%);border-color:#BFE3CF}
+.card.shown.current{border-color:var(--green)}
+.chk{position:absolute;top:10px;left:10px;width:22px;height:22px;border-radius:6px;border:2px solid #D5D0C7;background:#fff;display:grid;place-items:center;transition:.12s}
+.chk svg{width:13px;height:13px;opacity:0;stroke:#fff}
+.card.sel .chk{background:var(--navy);border-color:var(--navy)}.card.sel .chk svg{opacity:1}
+.badge{position:absolute;top:10px;right:10px;font-size:11px;font-weight:700;color:var(--green);background:var(--green-bg);padding:3px 8px;border-radius:99px}
+.avatar{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#EFEBE4;margin-top:6px}
+.avatar svg{width:100%;height:100%;filter:blur(1.6px);transform:scale(1.04)}
+.name{font-size:17px;font-weight:800;margin-top:10px}
+.sub{font-size:13px;color:var(--muted);margin-top:2px}
+.frags{display:flex;align-items:center;gap:6px;margin:10px 0 12px;font-size:12px;color:var(--muted)}
+.frags span.t{width:24px;height:24px;border-radius:6px;overflow:hidden;background:#EFEBE4}
+.frags span.t svg{width:100%;height:100%;filter:blur(1px)}
+.seg{display:grid;grid-template-columns:1fr 1fr;width:100%;background:#F1EEE8;border-radius:10px;padding:3px}
+.seg button{padding:9px 0;font-size:14px;font-weight:700;border-radius:8px;color:var(--muted);transition:.15s}
+.seg button.on-hide{background:var(--navy);color:#fff;box-shadow:0 1px 3px rgba(30,42,74,.3)}
+.seg button.on-show{background:var(--green);color:#fff;box-shadow:0 1px 3px rgba(47,158,110,.4)}
+/* group bar */
+.bar{position:sticky;bottom:20px;margin:-80px auto 20px;width:max-content;max-width:100%;background:var(--navy);color:#fff;border-radius:14px;padding:10px 12px 10px 20px;display:flex;align-items:center;gap:16px;font-size:14px;box-shadow:0 10px 30px rgba(30,42,74,.3);transform:translateY(20px);opacity:0;pointer-events:none;transition:.2s}
+.bar.on{transform:none;opacity:1;pointer-events:auto}
+.bar b{font-weight:700}.bar .dot{opacity:.4}
+.bar .go{background:#fff;color:var(--navy);font-weight:800;padding:9px 16px;border-radius:9px}
+.bar .cancel{color:#C9CEDB;padding:9px 10px}
+/* player */
+.player{position:relative;aspect-ratio:16/9;border-radius:var(--r);overflow:hidden;background:#EDE6DA;box-shadow:0 6px 24px rgba(30,42,74,.12);flex:none}
+.scene{position:absolute;inset:0;width:100%;height:100%}
+.pp{position:absolute;bottom:9%;width:15%;aspect-ratio:100/160;transition:opacity .2s}
+.pp svg.body{width:100%;height:100%;display:block}
+.face{position:absolute;left:28%;top:11.25%;width:44%;height:27.5%;border-radius:38%;overflow:hidden}
+.face.mos{display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(6,1fr);border-radius:18%}
+.face svg{width:100%;height:100%;display:block}
+.pp.cur::after{content:"";position:absolute;left:18%;top:6%;width:64%;height:36%;border:2px solid #fff;border-radius:10px;box-shadow:0 0 0 2px var(--navy);pointer-events:none}
+.tag{position:absolute;left:50%;transform:translateX(-50%);top:-9%;font-size:10px;font-weight:700;background:#fff;color:var(--navy);padding:2px 6px;border-radius:99px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.mbox{position:absolute;border:2px dashed #F2A33A;background:rgba(242,163,58,.12);border-radius:4px}
+.mbox em{position:absolute;top:-17px;left:-2px;font-style:normal;font-size:10px;font-weight:700;background:#F2A33A;color:#fff;padding:1px 6px;border-radius:4px}
+.player.draw{cursor:crosshair;outline:2px solid #F2A33A;outline-offset:-2px}
+.rec{position:absolute;left:12px;top:12px;font-size:11px;font-weight:700;background:rgba(255,255,255,.9);padding:4px 9px;border-radius:99px;display:flex;align-items:center;gap:6px}
+.rec i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+/* controls */
+.panel{background:#fff;border-radius:var(--r);padding:14px 16px 16px;box-shadow:0 1px 2px rgba(30,42,74,.05),0 4px 14px rgba(30,42,74,.04)}
+.ctl{display:flex;align-items:center;gap:12px}
+.play{width:40px;height:40px;border-radius:50%;background:var(--navy);display:grid;place-items:center}
+.play svg{width:16px;height:16px;fill:#fff}
+.ic{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:var(--navy)}
+.ic:hover{background:var(--bg)}.ic svg{width:18px;height:18px;fill:currentColor}
+.time{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}.time span{color:var(--muted);font-weight:500}
+.tl-head{display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 8px;font-size:13px}
+.tl-head b{font-weight:800;font-size:14px}.tl-head span{color:var(--muted)}
+.track{position:relative;height:14px;border-radius:7px;background:#EEEAE3;cursor:pointer}
+.track .s{position:absolute;top:0;height:100%;background:var(--navy);border-radius:7px}
+.track .ph{position:absolute;top:-5px;width:3px;height:24px;background:#E0533D;border-radius:2px;transform:translateX(-1px)}
+.ticks{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums}
+.tools{display:flex;align-items:center;gap:10px}
+.btn-ghost{display:flex;align-items:center;gap:7px;background:#fff;border:1.5px solid var(--navy);color:var(--navy);font-weight:700;font-size:14px;padding:9px 14px;border-radius:10px}
+.btn-ghost.on{background:#FFF4E2;border-color:#F2A33A;color:#9A5B05}
+.btn-ghost svg{width:16px;height:16px}
+.chip{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:#fff;padding:9px 14px;border-radius:99px;border:1px solid var(--line)}
+.chip b{color:var(--navy)}
+.spin{width:14px;height:14px;border:2px solid #D5D9E3;border-top-color:var(--navy);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:36px;transform:translate(-50%,30px);background:var(--navy);color:#fff;padding:13px 22px;border-radius:12px;font-weight:600;font-size:14px;opacity:0;transition:.25s;pointer-events:none;box-shadow:0 10px 30px rgba(30,42,74,.3)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.left::-webkit-scrollbar{width:8px}.left::-webkit-scrollbar-thumb{background:#DDD8CE;border-radius:4px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo"><i><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></i>모자이크 스튜디오</div>
+  <div class="file"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="3" width="13" height="10" rx="2"/><path d="M6.5 6l3.5 2-3.5 2z" fill="currentColor"/></svg>store_live_1028.mp4</div>
+  <div class="sp"></div>
+  <button class="btn-primary" id="render"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></svg>렌더 후 다운로드</button>
+</header>
+<div class="main">
+  <section class="left" id="left">
+    <h1 id="title">등장인물 8명</h1>
+    <p class="hint">기본은 모두 가림 · 보일 사람만 켜세요</p>
+    <div class="grid" id="grid"></div>
+    <div class="bar" id="bar"><span id="barText"><b>2개 선택됨</b></span><span class="dot">·</span><button class="go" id="merge">같은 사람으로 묶기</button><button class="cancel" id="cancel">취소</button></div>
+  </section>
+  <section class="right">
+    <div class="player" id="player">
+      <svg class="scene" viewBox="0 0 640 360" preserveAspectRatio="none">
+        <rect width="640" height="360" fill="#EFE8DC"/>
+        <rect y="262" width="640" height="98" fill="#D9CDB8"/>
+        <g fill="#C9B99A"><rect x="20" y="40" width="210" height="8" rx="2"/><rect x="20" y="110" width="210" height="8" rx="2"/><rect x="20" y="180" width="210" height="8" rx="2"/><rect x="20" y="30" width="6" height="170"/><rect x="224" y="30" width="6" height="170"/></g>
+        <g><rect x="32" y="14" width="30" height="26" rx="3" fill="#E58E6B"/><rect x="68" y="20" width="26" height="20" rx="3" fill="#7BB3A0"/><rect x="100" y="10" width="34" height="30" rx="3" fill="#F2C56B"/><rect x="142" y="18" width="28" height="22" rx="3" fill="#8FA4D6"/><rect x="178" y="14" width="30" height="26" rx="3" fill="#E58E6B"/>
+        <rect x="34" y="84" width="34" height="26" rx="3" fill="#8FA4D6"/><rect x="76" y="76" width="28" height="34" rx="3" fill="#F2C56B"/><rect x="112" y="86" width="40" height="24" rx="3" fill="#7BB3A0"/><rect x="162" y="80" width="34" height="30" rx="3" fill="#E58E6B"/>
+        <rect x="34" y="152" width="40" height="28" rx="3" fill="#F2C56B"/><rect x="84" y="148" width="30" height="32" rx="3" fill="#E58E6B"/><rect x="124" y="156" width="34" height="24" rx="3" fill="#8FA4D6"/><rect x="168" y="150" width="30" height="30" rx="3" fill="#7BB3A0"/></g>
+        <rect x="290" y="30" width="150" height="90" rx="6" fill="#DDE6EE" stroke="#C3CFDB" stroke-width="3"/><path d="M290 90l50-30 40 24 60-40" stroke="#fff" stroke-width="3" fill="none" opacity=".7"/>
+        <rect x="470" y="40" width="130" height="60" rx="6" fill="#1E2A4A" opacity=".9"/><text x="535" y="78" text-anchor="middle" font-size="22" font-weight="800" fill="#fff" font-family="SUIT,sans-serif">SALE</text>
+        <rect x="250" y="236" width="360" height="86" rx="6" fill="#B79E7A"/><rect x="244" y="228" width="372" height="14" rx="5" fill="#A38A66"/>
+        <rect x="548" y="206" width="44" height="22" rx="3" fill="#4A5675"/>
+      </svg>
+      <div id="people"></div>
+      <div id="boxes"></div>
+      <div class="rec"><i></i>LIVE 미리보기</div>
+    </div>
+    <div class="panel">
+      <div class="ctl">
+        <button class="play" id="play" aria-label="재생"><svg viewBox="0 0 16 16" id="playIcon"><path d="M4 2.5v11l9-5.5z"/></svg></button>
+        <button class="ic" id="back" aria-label="5초 뒤로"><svg viewBox="0 0 16 16"><path d="M8 3v3L3.5 3.5 8 1v2a6 6 0 11-6 6h1.6A4.4 4.4 0 108 3z" transform="translate(0 1)"/></svg></button>
+        <div class="time" id="time">01:24 <span>/ 05:12</span></div>
+      </div>
+      <div class="tl-head"><b id="tlLabel">인물 3 등장 구간</b><span id="tlInfo"></span></div>
+      <div class="track" id="track"><div class="ph" id="ph"></div></div>
+      <div class="ticks"><span>00:00</span><span>01:00</span><span>02:00</span><span>03:00</span><span>04:00</span><span>05:12</span></div>
+    </div>
+    <div class="tools">
+      <button class="btn-ghost" id="draw"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="2" stroke-dasharray="3 2"/><path d="M8 5v6M5 8h6" stroke-linecap="round"/></svg>박스 그리기</button>
+      <div class="chip"><b id="mcount">수동 박스 1</b> · 추적 중… <i class="spin"></i></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const TOTAL=312;
+const fmt=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0');
+const dur=s=>{const m=Math.floor(s/60),r=s%60;return (m?m+'분 ':'')+r+'초'};
+let P=[
+ {id:1,name:'진행자',skin:'#F1C9A5',hair:'#2B2B33',shirt:'#1E2A4A',frags:4,segs:[[0,120],[150,312]],show:true,pos:8},
+ {id:2,name:'인물 2',skin:'#E3B08A',hair:'#6B4226',shirt:'#C86B5A',frags:2,segs:[[20,70],[200,260]],pos:70},
+ {id:3,name:'인물 3',skin:'#C98E64',hair:'#1D1A1A',shirt:'#3F8F7B',frags:3,segs:[[40,100],[130,174],[240,270]],pos:28},
+ {id:4,name:'인물 4',skin:'#F4D4B8',hair:'#B5803A',shirt:'#8A6FB8',frags:2,segs:[[10,40],[180,230]],pos:84},
+ {id:5,name:'인물 5',skin:'#8D5A3C',hair:'#15110F',shirt:'#E0A83C',frags:1,segs:[[90,130]],pos:50},
+ {id:6,name:'인물 6',skin:'#EBC09B',hair:'#8C8C93',shirt:'#5A7DB8',frags:2,segs:[[60,95],[220,250]],pos:48},
+ {id:7,name:'인물 7',skin:'#D9A47E',hair:'#4A2A1A',shirt:'#B85A7D',frags:1,segs:[[260,300]],pos:60},
+ {id:8,name:'인물 8',skin:'#F0C7A0',hair:'#2D3A5A',shirt:'#6DA36A',frags:3,segs:[[5,25],[110,140],[280,310]],pos:18}
+];
+const alias={};let sel=new Set(),cur=3,t=84,playing=false,boxes=[{x:61,y:55,w:12,h:20}];
+const root=id=>{while(alias[id])id=alias[id];return id};
+const get=id=>P.find(p=>p.id===root(id));
+const total=p=>p.segs.reduce((a,s)=>a+s[1]-s[0],0);
+function faceSVG(skin,hair){return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="${skin}"/><path d="M0 0h100v34Q50 18 0 38z" fill="${hair}"/><circle cx="32" cy="55" r="5" fill="#2a2320"/><circle cx="68" cy="55" r="5" fill="#2a2320"/><path d="M34 76q16 12 32 0" stroke="#7A3B30" stroke-width="5" fill="none" stroke-linecap="round"/></svg>`}
+function avatar(p,variant){const h=variant?['#2B2B33','#6B4226','#B5803A'][variant%3]:p.hair;const bg=['#F3E9D8','#E3ECF4','#EBE3F1','#E4F0E7'][p.id%4];
+ return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="${bg}"/><path d="M8 100q4-26 42-26t42 26z" fill="${p.shirt}"/><rect x="42" y="62" width="16" height="16" fill="${p.skin}"/><ellipse cx="50" cy="44" rx="22" ry="25" fill="${p.skin}"/><path d="M27 44q-4-30 23-30t23 30q-8-16-23-16T27 44z" fill="${h}"/><circle cx="41" cy="46" r="2.4" fill="#2a2320"/><circle cx="59" cy="46" r="2.4" fill="#2a2320"/><path d="M42 58q8 6 16 0" stroke="#8A4A3A" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`}
+function body(p){return `<svg class="body" viewBox="0 0 100 160"><path d="M6 160q0-52 44-52t44 52z" fill="${p.shirt}"/><rect x="42" y="56" width="16" height="22" fill="${p.skin}"/><ellipse cx="50" cy="40" rx="25" ry="26" fill="${p.skin}"/></svg>`}
+function mosaic(p){let h='';let r=p.id*7+3;for(let i=0;i<36;i++){r=(r*9301+49297)%233280;const v=r/233280;const row=Math.floor(i/6);
+ const base=row<2?p.hair:p.skin;h+=`<i style="background:${base};filter:brightness(${(0.82+v*0.3).toFixed(2)})"></i>`}return h}
+function render(){
+ document.getElementById('title').textContent=`등장인물 ${P.length}명`;
+ const g=document.getElementById('grid');
+ g.innerHTML=P.map(p=>`<div class="card ${p.show?'shown':''} ${cur===p.id?'current':''} ${sel.has(p.id)?'sel':''}" data-id="${p.id}">
+  <div class="chk" data-chk="${p.id}"><svg viewBox="0 0 14 14" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7.5l3 3 6-7"/></svg></div>
+  ${p.show?'<span class="badge">보임</span>':''}
+  <div class="avatar">${avatar(p)}</div>
+  <div class="name">${p.name}</div>
+  <div class="sub">등장 ${dur(total(p))}</div>
+  <div class="frags">${[0,1,2].map(i=>`<span class="t">${avatar(p,i)}</span>`).join('')}<span>조각 ${p.frags}개</span></div>
+  <div class="seg"><button data-t="${p.id}" data-v="0" class="${p.show?'':'on-hide'}">가림</button><button data-t="${p.id}" data-v="1" class="${p.show?'on-show':''}">보임</button></div>
+ </div>`).join('');
+ bar();timeline();scene();
+}
+function bar(){const b=document.getElementById('bar');b.classList.toggle('on',sel.size>=2);document.getElementById('barText').innerHTML=`<b>${sel.size}개 선택됨</b>`}
+function timeline(){
+ const p=get(cur);const tr=document.getElementById('track');
+ tr.querySelectorAll('.s').forEach(e=>e.remove());
+ p.segs.forEach(([a,b])=>{const d=document.createElement('div');d.className='s';d.style.left=a/TOTAL*100+'%';d.style.width=(b-a)/TOTAL*100+'%';tr.prepend(d)});
+ document.getElementById('tlLabel').textContent=`${p.name} 등장 구간`;
+ document.getElementById('tlInfo').textContent=`${p.segs.length}구간 · 총 ${dur(total(p))}`;
+ document.getElementById('ph').style.left=t/TOTAL*100+'%';
+ document.getElementById('time').innerHTML=`${fmt(t)} <span>/ ${fmt(TOTAL)}</span>`;
+}
+function scene(){
+ const el=document.getElementById('people');let h='';
+ [1,3,6,2,4,5,8,7].forEach(id=>{const p=get(id);const own=P.find(q=>q.id===id)||{};
+  const src=(window._orig||{})[id];const o=src||p;
+  const here=p.segs.some(s=>t>=s[0]&&t<s[1]);if(!here)return;
+  h+=`<div class="pp ${p.id===cur?'cur':''}" style="left:${o.pos}%;">${body(o)}${p.show?`<div class="face">${faceSVG(o.skin,o.hair)}</div>`:`<div class="face mos">${mosaic(o)}</div>`}${p.id===cur?`<span class="tag">${p.name}</span>`:''}</div>`});
+ el.innerHTML=h;
+ document.getElementById('boxes').innerHTML=boxes.map((b,i)=>`<div class="mbox" style="left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%"><em>수동 ${i+1}</em></div>`).join('');
+ document.getElementById('mcount').textContent='수동 박스 '+boxes.length;
+}
+window._orig={};P.forEach(p=>window._orig[p.id]={...p});
+const toast=m=>{const e=document.getElementById('toast');e.textContent=m;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),2200)};
+document.getElementById('grid').addEventListener('click',e=>{
+ const tg=e.target.closest('[data-t]');
+ if(tg){const p=P.find(x=>x.id==tg.dataset.t);p.show=tg.dataset.v==='1';cur=p.id;render();return}
+ const ck=e.target.closest('[data-chk]');
+ if(ck){const id=+ck.dataset.chk;sel.has(id)?sel.delete(id):sel.add(id);render();return}
+ const c=e.target.closest('.card');if(c){cur=+c.dataset.id;render()}
+});
+document.getElementById('cancel').onclick=()=>{sel.clear();render()};
+document.getElementById('merge').onclick=()=>{
+ const ids=[...sel].sort((a,b)=>a-b);if(ids.length<2)return;
+ const keep=P.find(p=>p.id===ids[0]);
+ ids.slice(1).forEach(id=>{const o=P.find(p=>p.id===id);keep.frags+=o.frags;keep.segs=keep.segs.concat(o.segs);keep.show=keep.show||o.show;alias[id]=keep.id});
+ keep.segs.sort((a,b)=>a[0]-b[0]);
+ const m=[];keep.segs.forEach(s=>{const l=m[m.length-1];if(l&&s[0]<=l[1])l[1]=Math.max(l[1],s[1]);else m.push([...s])});keep.segs=m;
+ P=P.filter(p=>!alias[p.id]);cur=keep.id;sel.clear();render();toast(`${keep.name}으로 묶였습니다`);
+};
+document.getElementById('render').onclick=()=>toast('렌더 대기열에 추가됨 (데모)');
+const tr=document.getElementById('track');
+tr.onclick=e=>{const r=tr.getBoundingClientRect();t=Math.round((e.clientX-r.left)/r.width*TOTAL);timeline();scene()};
+document.getElementById('back').onclick=()=>{t=Math.max(0,t-5);timeline();scene()};
+let iv;document.getElementById('play').onclick=()=>{playing=!playing;
+ document.getElementById('playIcon').innerHTML=playing?'<path d="M3.5 2h3v12h-3zM9.5 2h3v12h-3z"/>':'<path d="M4 2.5v11l9-5.5z"/>';
+ clearInterval(iv);if(playing)iv=setInterval(()=>{t=t>=TOTAL?0:t+1;timeline();scene()},1000)};
+/* draw boxes */
+const pl=document.getElementById('player'),db=document.getElementById('draw');let drawing=false,st=null,tmp=null;
+db.onclick=()=>{drawing=!drawing;db.classList.toggle('on',drawing);pl.classList.toggle('draw',drawing);if(drawing)toast('플레이어에서 드래그해 가릴 영역을 그리세요')};
+const pt=e=>{const r=pl.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*100,y:(e.clientY-r.top)/r.height*100}};
+pl.onmousedown=e=>{if(!drawing)return;st=pt(e);tmp=document.createElement('div');tmp.className='mbox';pl.appendChild(tmp);e.preventDefault()};
+window.onmousemove=e=>{if(!st)return;const p=pt(e);tmp.style.left=Math.min(st.x,p.x)+'%';tmp.style.top=Math.min(st.y,p.y)+'%';tmp.style.width=Math.abs(p.x-st.x)+'%';tmp.style.height=Math.abs(p.y-st.y)+'%'};
+window.onmouseup=e=>{if(!st)return;const p=pt(e);tmp.remove();const w=Math.abs(p.x-st.x),h=Math.abs(p.y-st.y);
+ if(w>1.5&&h>2)boxes.push({x:Math.min(st.x,p.x),y:Math.min(st.y,p.y),w,h});st=null;scene()};
+render();
+</script>
+</body>
+</html>
