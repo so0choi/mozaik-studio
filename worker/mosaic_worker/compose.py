@@ -65,4 +65,18 @@ def mask_boxes(tracks_doc: dict, edits: dict, manual: list[dict]) -> dict[int, l
                 continue
             per_frame[f].append((int(x), int(y), int(w), int(h), manual_block(int(w), int(h))))
 
+    # Propagation missing or failed: mask the drawn anchor frames as fixed boxes,
+    # matching the web preview so a face covered there is never exposed in the output.
+    doc_ids = {doc["id"] for doc in manual or []}
+    for e in edits.get("manual", []):
+        if e.get("deleted") or e["id"] in doc_ids:
+            continue
+        trim = e.get("trim")
+        for a in e.get("anchors", []):
+            f = int(a["frame"])
+            if trim and not (trim[0] <= f <= trim[1]):
+                continue
+            x, y, w, h = a["box"]
+            per_frame[f].append((int(x), int(y), int(w), int(h), manual_block(int(w), int(h))))
+
     return {f: sorted(boxes, key=lambda b: (b[0], b[1])) for f, boxes in per_frame.items()}

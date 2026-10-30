@@ -50,3 +50,14 @@ def test_manual_without_edit_entry_is_masked():
     tracks = {"tracks": []}
     manual = [{"id": "mx", "frames": {"3": [0, 0, 100, 40]}, "segments": [[3, 3]]}]
     assert mask_boxes(tracks, {}, manual) == {3: [(0, 0, 100, 40, 8)]}
+
+
+def test_manual_edit_without_propagation_doc_masks_anchor_frames():
+    # propagation failed or not finished: the preview draws the anchor boxes, so the render must too
+    tracks = {"version": 1, "fps": 30, "width": 640, "height": 360, "frameCount": 90, "tracks": []}
+    edits = {"visible": [], "groups": [], "splits": [], "reviewed": [],
+             "manual": [{"id": "m9", "anchors": [{"frame": 12, "box": [50, 60, 40, 40]},
+                                                 {"frame": 80, "box": [10, 10, 64, 32]}],
+                         "trim": [0, 50], "deleted": False}]}
+    out = mask_boxes(tracks, edits, [])
+    assert out == {12: [(50, 60, 40, 40, 8)]}
