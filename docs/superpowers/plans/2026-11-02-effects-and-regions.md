@@ -304,7 +304,7 @@ Target: `docs/superpowers/plans/2026-11-02-effects-and-regions.md` (+ spec `docs
 
 Dispositions: R1–R6 accepted (사용자 "전체 다 권장안으로 진행").
 
-### Outside voice (Codex, provider=codex, model gpt-6-astra, completed)
+### Outside voice (외부 모델 리뷰, completed)
 O1 High 블러 가장자리 투명 → 아래 video 노출 / O2 High 전파 박스(25% 확장·클램프)에 다각형 상대좌표를 그대로 쓰면 모양이 바뀜 / O3 High 병합 후 남은 override 키 → 저장 거부, `flush()`가 실패를 삼키고 렌더 진행(기존 버그) / O4 High 실패 영역 검정을 이후 겹친 영역이 덮음 / O5 High 가짜 ctx 호출 테스트로는 기하 일치를 증명 못 함 / O6 Medium split 뒤 그룹 소속이 `t2a`/`t2b`로 바뀜 / O7 High 수동 카드를 열어도 `currentKey`가 남아 대상이 뒤바뀜, 수동 영역 "원본" 계약 없음.
 모두 코드로 확인(propagate.py:84, edits.ts:89, Studio.tsx:87-100·520·622-631, PlayerOverlay.tsx:161). Dispositions: O1–O7 accepted, 수정안은 아래 ledger.
 
@@ -401,7 +401,7 @@ None.
 - TODOS.md updates: 0 items proposed (no TODOS.md; B·C tracked in spec §9)
 - Failure modes: 0 critical gaps flagged
 - Unresolved decisions: 0 in this review
-- Outside voice: codex, completed (7 findings, all accepted)
+- Outside voice: external model review, completed (7 findings, all accepted)
 - Parallelization: 3 lanes, 3 parallel / 5 sequential
 - Lake Score: 1/1 (D2 no completeness score; remedies all full-coverage options)
 
@@ -413,9 +413,9 @@ None.
 - System audit: UI 범위 = 왼쪽 패널 효과 카드·그리기 도구, 오른쪽 TargetDetail·TargetList·ManualBoxCard, 미리보기 overlay. DESIGN.md 없음 → `apps/web/src/styles.css` 토큰 기준(`/design-consultation`은 권장하지만 이번 범위 밖).
 - Step 0: 5/10 — 동작은 정의됐지만 사용자가 무엇을 편집 중인지·노출 상태·그리기 중 상태가 화면에 정의되지 않음. 집중 영역: 전체 7개 패스(권장).
 - Step 0.5 목업: 생성하지 않음. 레이아웃이 main(b9d87aa)에 이미 확정돼 있고, 목업 보드는 사용자가 직접 고르는 단계라 "전체 권장안으로 진행" 지시와 맞지 않음.
-- Outside voices: Codex(gpt-6-astra, completed) 13건 + Claude 서브에이전트 10건. 핵심 지적이 일치(대상 불명확, 원본=노출 한 번 클릭, 상속/개별 구분 없음, 슬라이더 연속 커밋, 다각형 동작 미정, 상태 누락).
+- Outside voices: 외부 모델 리뷰(completed) 13건 + 독립 서브에이전트 리뷰 10건. 핵심 지적이 일치(대상 불명확, 원본=노출 한 번 클릭, 상속/개별 구분 없음, 슬라이더 연속 커밋, 다각형 동작 미정, 상태 누락).
 
-Litmus (Claude / Codex / 합의): 1 브랜드 — / YES / YES · 2 시각 앵커 — / YES / YES(중앙 미리보기) · 3 제목만으로 이해 NO / NO / CONFIRMED 실패 → DD1·DD13 · 4 섹션 하나의 일 NO / NO / CONFIRMED 실패 → DD1 · 5 카드 필요 — / NO / NOT SPEC'D(기존 승인 레이아웃) · 6 모션 — / NO / 해당 없음 · 7 그림자 없이 프리미엄 — / YES / YES. Hard rejection #7(카드 스택 인스펙터): Codex만 지적, 레이아웃은 직전 브랜치에서 사용자 승인 → 재개하지 않음(Pass 4 상한 7).
+Litmus (서브에이전트 / 외부 모델 / 합의): 1 브랜드 — / YES / YES · 2 시각 앵커 — / YES / YES(중앙 미리보기) · 3 제목만으로 이해 NO / NO / CONFIRMED 실패 → DD1·DD13 · 4 섹션 하나의 일 NO / NO / CONFIRMED 실패 → DD1 · 5 카드 필요 — / NO / NOT SPEC'D(기존 승인 레이아웃) · 6 모션 — / NO / 해당 없음 · 7 그림자 없이 프리미엄 — / YES / YES. Hard rejection #7(카드 스택 인스펙터): 외부 모델만 지적, 레이아웃은 직전 브랜치에서 사용자 승인 → 재개하지 않음(Pass 4 상한 7).
 
 ### Passes
 | Pass | 전 | 후 | 근거 |
@@ -486,13 +486,13 @@ Unresolved decisions: none.
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | codex via `/plan-eng-review`, `/plan-design-review` | Independent 2nd opinion | 2 | completed | eng 7 findings, design 13 findings; all accepted or deferred to TODOS |
+| Outside Review | external model via `/plan-eng-review`, `/plan-design-review` | Independent 2nd opinion | 2 | completed | eng 7 findings, design 13 findings; all accepted or deferred to TODOS |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_open | 6 issues, 0 critical gaps (remedies accepted into plan) |
 | Design Review | `/plan-design-review` | UI/UX gaps | 1 | issues_open | score: 3/10 → 7/10, 14 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex plan-review (eng phase) completed, 7 findings; codex design phase completed, 13 findings; Claude design subagent (in-host) completed, 10 findings.
-- **CROSS-MODEL:** design — codex and in-host subagent agree on unclear edit target, one-click exposure via 원본, no inherit/override distinction, continuous slider commits, unspecified polygon drawing, missing states. Codex alone raised the card-stack inspector (not reopened) and the in-flight save race (adopted, DD9).
+- **OUTSIDE COVERAGE:** external plan-review (eng phase) completed, 7 findings; external design phase completed, 13 findings; independent design subagent completed, 10 findings.
+- **CROSS-MODEL:** design — external model and independent subagent agree on unclear edit target, one-click exposure via 원본, no inherit/override distinction, continuous slider commits, unspecified polygon drawing, missing states. the external model alone raised the card-stack inspector (not reopened) and the in-flight save race (adopted, DD9).
 - **VERDICT:** NOT CLEARED — Eng Review issues_open (remedies mapped into Tasks 1–8, no open decisions); eng review required. Design review issues_open (2 deferred TODOs, passes 4 and 6 below 8).
 
 NO UNRESOLVED DECISIONS
