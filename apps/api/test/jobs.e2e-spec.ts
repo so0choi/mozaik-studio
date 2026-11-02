@@ -181,7 +181,10 @@ describe('jobs (A2)', () => {
 
     it('GET returns the default when nothing is stored', async () => {
       const r = await request(ctx.server).get(`/api/jobs/${id}/edits`).set('Cookie', cookie);
-      expect(r.body).toEqual({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [] });
+      expect(r.body).toEqual({
+        version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [],
+        effects: { default: { type: 'mosaic', strength: 1 }, background: null, overrides: {} },
+      });
     });
 
     it('PUT accepts the contract fixture (split-derived ids) and GET round-trips it', async () => {
@@ -190,6 +193,12 @@ describe('jobs (A2)', () => {
       expect((await put(edits)).status).toBe(200);
       expect((await request(ctx.server).get(`/api/jobs/${id}/edits`).set('Cookie', cookie)).body).toEqual(edits);
       expect(fs.existsSync(path.join(ctx.dataDir, 'jobs', id, 'edits.json'))).toBe(true);
+    });
+
+    it('PUT rejects an invalid effect type with 400', async () => {
+      const edits = fixture('edits.sample.json');
+      edits.effects = { default: { type: 'none' }, background: null, overrides: {} };
+      expect((await put(edits)).status).toBe(400);
     });
 
     it('PUT rejects unknown track ids (visible, groups, splits) and review ids with 400', async () => {
