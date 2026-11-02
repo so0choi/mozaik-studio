@@ -16,10 +16,12 @@ from .normalize import ffmpeg_bin, load_meta
 from .status import MSG_RENDER_FAILED, UserFacingError
 
 
-def compose_frame(src: np.ndarray, regions: list[dict], background: dict | None, log: Callable[[str], None]) -> np.ndarray:
+def compose_frame(src: np.ndarray, regions: list[dict], background: dict | None, log: Callable[[str], None],
+                  logged: set | None = None) -> np.ndarray:
     """Spec 4.2 order: background over the whole frame, every region from the ORIGINAL src on top,
     then each failed region's frame-clipped box painted black (shape ignored). A background
-    exception propagates (render fails); a region exception is logged and masked black."""
+    exception propagates (render fails); a region exception is logged and masked black.
+    `logged` (a per-render set of region ids) makes each failing region log once, not once per frame."""
     if not regions and not background:
         return src  # nothing to mask: no copy (callers only read the result)
     out = apply_background(src, background) if background else src.copy()
@@ -28,7 +30,11 @@ def compose_frame(src: np.ndarray, regions: list[dict], background: dict | None,
         try:
             apply_region(src, out, r)
         except Exception as e:  # never leave a face exposed: black it out below
-            log(f"region {r.get('id')} failed: {e!r}")
+            rid = r.get("id")
+            if logged is None or rid not in logged:
+                if logged is not None:
+                    logged.add(rid)
+                log(f"region {rid} failed: {e!r}")
             failed.append(list(r["box"][:4]))
     fh, fw = out.shape[:2]
     for x, y, w, h in failed:
@@ -77,6 +83,8 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
         raise UserFacingError(MSG_RENDER_FAILED)
     written = 0
     last_pct = -1
+    logged_regions: set = set()
+    failed = False
     with open(log_path, "wb") as log:
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
         try:
@@ -86,7 +94,7 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
                 if not ok:
                     break
                 try:
-                    frame = compose_frame(frame, regions.get(idx, []), background, lambda m: log.write((m + "\n").encode()))
+                    frame = compose_frame(frame, regions.get(idx, []), background, lambda m: log.write((m + "\n").encode()), logged_regions)
                 except Exception as e:
                     log.write(f"frame {idx} failed: {e!r}\n".encode())
                     raise UserFacingError(MSG_RENDER_FAILED)
@@ -100,12 +108,20 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
                         progress("rendering", pct)
         except BrokenPipeError:
             pass
+        except BaseException:
+            failed = True  # any abort: reap ffmpeg and drop the partial output
+            raise
         finally:
             cap.release()
+            if failed:
+                proc.kill()  # no more frames will come: do not let ffmpeg finish a truncated file
             try:
                 proc.stdin.close()
-            except BrokenPipeError:
+            except (BrokenPipeError, OSError):
                 pass
+            if failed:
+                proc.wait()
+                tmp.unlink(missing_ok=True)
         rc = proc.wait()
     if rc != 0 or written == 0 or not tmp.exists():
         tmp.unlink(missing_ok=True)
