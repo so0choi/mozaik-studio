@@ -7,11 +7,15 @@ const manual = (extra: any = {}) => ({ id: 'm1', anchors: [{ frame: 0, box: [0, 
 const eff = (e: any) => run({ effects: { default: { type: 'mosaic', strength: 1 }, background: null, overrides: {}, ...e } });
 
 describe('validateEdits effects', () => {
-  it('accepts defaults and missing effects', () => {
+  it('accepts defaults, an omitted effects field and valid effect settings', () => {
     expect(run({})).toBeNull();
+    expect(run({ effects: undefined })).toBeNull();
     expect(eff({ background: null })).toBeNull();
     expect(eff({ default: { type: 'blur' } })).toBeNull();
     expect(eff({ default: { type: 'color', color: '#aabb00' } })).toBeNull();
+  });
+  it('rejects effects without a default', () => {
+    expect(typeof run({ effects: { background: null, overrides: {} } })).toBe('string');
   });
   it('accepts override keys: track, split piece, group, manual', () => {
     const ok = run({
