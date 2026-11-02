@@ -217,42 +217,45 @@ def test_render_end_to_end_with_effects(tmp_path): ... # 기존 render 통합 �
 - [ ] **Step 4: 통과 확인** — `npx vitest run && npm run typecheck`
 - [ ] **Step 5: Commit** — `git commit -m "feat(web): preview blur, color, shaped regions and background"`
 
-### Task 6: 왼쪽 패널 효과 컨트롤
+### Task 6: 효과 컨트롤 (왼쪽 기본·배경, 오른쪽 인물·수동 영역) + 렌더 저장 게이트
 
 **Files:**
-- Modify: `apps/web/src/studio/LeftPanel.tsx:146-176`, `apps/web/src/pages/Studio.tsx` (props 연결, `flush`/`startRender` 저장 게이트 `Studio.tsx:87-100, 622-631`)
-- Create: `apps/web/src/studio/LeftPanel.test.tsx`
-- Test: `apps/web/src/pages/Studio.test.tsx` (렌더 게이트)
+- Modify: `apps/web/src/studio/LeftPanel.tsx:69-176` (카드 이름·순서·기본/배경 효과), `apps/web/src/studio/TargetDetail.tsx` (원본 버튼 분리, 효과 세그먼트), `apps/web/src/studio/ManualBoxCard.tsx` (효과 세그먼트, 모양 제목, 실패 문구), `apps/web/src/studio/TargetList.tsx:143` (실제 효과 태그), `apps/web/src/pages/Studio.tsx` (props 연결, `flush`/`startRender` `:87-100, :622-631`, 키보드 `:671-680`), `apps/web/src/styles.css` (오버레이 토큰, `.uncover` 버튼)
+- Create: `apps/web/src/studio/EffectControls.tsx` (세그먼트 + 강도/색상 + 기본값 따르기, 세 곳에서 재사용), `apps/web/src/studio/EffectControls.test.tsx`, `apps/web/src/studio/LeftPanel.test.tsx`
+- Test: `apps/web/src/studio/TargetDetail.test.tsx`, `apps/web/src/pages/Studio.test.tsx`
 
 **Interfaces:**
-- Consumes: `setTargetEffect`, `setDefaultEffect`, `setBackgroundEffect`, 기존 `toggleVisible`.
-- Produces: `LeftPanel` props 추가 `effectTarget: { id: string; kind: 'person' | 'manual'; visible: boolean } | null` (열린 수동 카드 `manualOpen`이 있으면 그 수동 영역, 없으면 열린 인물 `currentKey`의 Person key), `effects: Effects`, `onEffect(target: string | null, e: Effect | null)`, `onBackground(e: Effect | null)`, `onToggleVisible()`.
-- Produces: `flush(): Promise<boolean>` (저장 성공 또는 저장할 것 없음 = true). `startRender`는 false면 `api.render`를 호출하지 않고 `renderError`에 `'저장하지 못해 렌더를 시작하지 않았습니다.'`.
+- Consumes: `setTargetEffect`, `setDefaultEffect`, `setBackgroundEffect`, `setPersonVisible`(edits.ts), `Effect`, `Effects`.
+- Produces:
+  - `EffectControls({ value: Effect | null, inherited: Effect | null, allowNone?: false, onChange(e: Effect): void, onInherit?(): void, filterSupported: boolean })` — `value = null`이면 `inherited`를 "(기본값)"과 함께 표시. 강도 슬라이더는 로컬 상태로 미리보기하고 `change`에서 한 번 `onChange`. type이 color면 강도 대신 색상.
+  - `edits.ts`: `setPersonEffect(doc, edits, person: Person, effect: Effect): Edits` — 한 번에 `visible`에서 인물 trackIds 제거 + `overrides[person.key] = effect` + 그룹이면 멤버 조각 키의 override 삭제. `uncoverPerson(doc, edits, person): Edits` — 멱등 `setPersonVisible(…, true)`.
+  - `Studio`: `saveRevision`/`savedRevision` 카운터, `flush(): Promise<boolean>`은 진행 중 저장을 기다리고 직렬화하며 `savedRevision === saveRevision`일 때 true. `startRender`는 false면 `api.render` 미호출 + `renderError = '저장하지 못해 렌더를 시작하지 않았습니다.'`, 대기 중 버튼 문구 "저장 중…".
 - [ ] **Step 1: 실패하는 테스트**
-  - 대상 없음: "블러" 클릭 → `onEffect(null, {type:"blur", strength:1, color:"#000000"})`; "원본" 버튼 disabled.
-  - 수동 대상(`kind:'manual'`): "원본" disabled; "색상" → `onEffect("m1", …)`. Studio에서 인물이 열린 채 수동 카드를 열면 대상은 수동 영역.
-  - `Studio.test.tsx`: `render not requested when save fails` — `putEdits` reject 모의 → 렌더 버튼 클릭 시 `api.render` 미호출, 오류 문구 표시.
-  - 대상 있음(`t3`): "색상" 클릭 → `onEffect("t3", {...type:"color"})`; "원본" 클릭 → `onToggleVisible` 호출, `onEffect` 미호출.
-  - 세부 조정: 슬라이더 `min=1 max=5 step=1`, 값 변경 → strength 반영; 색상 선택기는 type=color일 때만 렌더.
-  - 배경: "끄기" → `onBackground(null)`, "모자이크" → `onBackground({type:"mosaic",...})`.
-  - 계속 disabled: 자동 탐지 클래스 칩, "대상 선택", "기본값으로 초기화", "고급 설정".
-- [ ] **Step 2–4: 실패 확인 → 구현 → 통과** (`npx vitest run src/studio/LeftPanel.test.tsx`, 전체 vitest + typecheck). 세부 조정은 `rowbtn`을 펼침 토글로 바꾸고 펼친 영역에 `<input type="range">`와 `<input type="color">`. 변경은 기존 `updateEdits`(undo/redo·저장 경로)로.
-- [ ] **Step 5: Commit** — `git commit -m "feat(web): target and background effect controls"`
+  - `EffectControls.test.tsx`: 상속 표시 "모자이크 (기본값)"; 개별값이면 "기본값 따르기" → `onInherit`; 슬라이더 `input` 이벤트 여러 번 + `change` 한 번 → `onChange` 1회; color면 강도 슬라이더 없음·색상 입력 있음; `filterSupported=false`이고 blur면 안내 문구 표시; 슬라이더 `aria-valuetext="3 / 5"`.
+  - `TargetDetail.test.tsx`: 원본 상태 인물에서 "블러" 클릭 → `onEffect(person, {type:"blur",…})` 1회(가림 + override는 `setPersonEffect` 하나로); "원본 · 가림 해제" 두 번 클릭해도 상태 변화 1회(멱등); 원본 상태에서는 세그먼트 선택 표시 없음·강도 숨김.
+  - `edits.test.ts`(Task 4 파일): `setPersonEffect masks and sets override in one edit`, `setPersonEffect on group clears member piece overrides`, `uncoverPerson is idempotent`.
+  - `LeftPanel.test.tsx`: 카드 이름 "기본 효과"·"원본" 버튼 없음·클릭 → `onDefault(effect)`; 배경 "끄기" → `onBackground(null)`, 배경 켜짐이면 안내 문구와 강도/색상; 효과 섹션이 매직 블러 카드보다 DOM에서 앞; "자동 가림"/"직접 가림" 제목; 계속 disabled 목록(클래스 칩, "대상 선택", "기본값으로 초기화", "고급 설정").
+  - `Studio.test.tsx`: `render waits for in-flight save` (putEdits 지연 resolve → 렌더 버튼 → resolve 전 `api.render` 미호출, resolve 후 1회); `render not requested when save fails` (reject → 미호출, 오류 문구); `edit during save is saved before render`; `Space on a focused effect button does not toggle playback`.
+- [ ] **Step 2–4: 실패 확인 → 구현 → 통과** (`cd apps/web && npx vitest run && npm run typecheck`). TargetList 태그는 `maskRegions`가 아닌 effects 해석 함수(`effectFor(personKey)` — `masks.ts`의 우선순위 함수를 export해 재사용)로 표시.
+- [ ] **Step 5: Commit** — `git commit -m "feat(web): default, background and per-target effect controls with save-gated render"`
 
 ### Task 7: 타원·다각형 그리기 도구
 
 **Files:**
-- Modify: `apps/web/src/studio/BoxTool.tsx` (→ `shape` prop 추가), `apps/web/src/studio/LeftPanel.tsx:117-128`, `apps/web/src/pages/Studio.tsx` (`BoxMode`에 shape, 확정 시 `addManualEdit`)
-- Create: `apps/web/src/studio/BoxTool.test.tsx`
+- Modify: `apps/web/src/studio/BoxTool.tsx` (→ `shape` prop), `apps/web/src/studio/LeftPanel.tsx:117-128`, `apps/web/src/pages/Studio.tsx` (`BoxMode`에 shape·points, 확정 시 `addManualEdit`, `redrawManual :537`에 기존 shape·points 전달)
+- Create: `apps/web/src/studio/BoxTool.test.tsx`, `apps/web/src/lib/polygon.ts` (`polygonArea`, `dedupeVertices`, `clampVertex`), `apps/web/src/lib/polygon.test.ts`
 
 **Interfaces:**
-- Produces: `BoxTool` props 추가 `shape: Shape`, `onConfirm(box: Box, points: [number, number][] | null)` (points는 박스 기준 0..1, 소수 4자리 반올림). `ManualEdit.shape`/`points` 저장. 전파 요청(`POST :id/manual`)은 바운딩 박스 그대로.
+- Produces: `BoxTool` props 추가 `shape: Shape`, `initialPoints?: [number, number][] | null`, `onConfirm(box: Box, points: [number, number][] | null)` (points는 박스 기준 0..1, 소수 4자리 반올림). 다시 그리기는 points를 유지하고 박스만 바꿈. 전파 요청(`POST :id/manual`)은 바운딩 박스 그대로.
 - [ ] **Step 1: 실패하는 테스트**
-  - ellipse: 드래그 → 미리보기 요소 `border-radius: 50%`, 확정 → `onConfirm(box, null)`.
-  - polygon: 클릭 3번 + Enter → `onConfirm(bbox, points)`; bbox = 꼭짓점 min/max; points ∈ [0,1].
-  - polygon: 2점에서 Enter·더블클릭 → 확정 안 됨; Esc → `onCancel`.
-  - polygon: bbox w 또는 h < 4 → 확정 버튼 disabled(사각형의 기존 4px 규칙과 같음).
-- [ ] **Step 2–4: 실패 확인 → 구현 → 통과.** 다각형은 SVG `<polygon>`으로 표시. 왼쪽 패널 타원·다각형 버튼 활성화(`aria-pressed`), 단축키는 추가하지 않음.
+  - `polygon.test.ts`: `polygonArea` 일직선 3점 = 0; `dedupeVertices`가 연속 중복 제거; `clampVertex`가 프레임 밖 좌표를 경계로.
+  - ellipse: 드래그 → 채움 미리보기(`data-testid="boxtool-shape"`가 ellipse), 확정 → `onConfirm(box, null)`.
+  - polygon: 클릭 3번 + Enter → `onConfirm(bbox, points)`; 첫 점 근처 클릭으로도 닫힘; 더블클릭은 점을 추가하지 않고 닫음; Backspace는 마지막 점 제거; Esc → `onCancel`.
+  - polygon: 일직선 3점·중복 점·bbox 4px 미만이면 확정 비활성 + 이유 문구; 안내문 `role="status"`에 꼭짓점 수.
+  - polygon: `initial` 박스는 점선 가이드로만 표시, 점은 비어 있음.
+  - redraw: 기존 polygon을 다시 그리면 points 유지, 새 박스로만 확정.
+  - 확정·취소 뒤 포커스가 도구 버튼으로 돌아감.
+- [ ] **Step 2–4: 실패 확인 → 구현 → 통과.** 채움 미리보기는 SVG `<polygon fill-rule="evenodd">`, 색은 `--overlay-*` 토큰. 왼쪽 패널 타원·다각형 버튼 활성화(`aria-pressed`). ManualBoxCard 다시 그리기 안내 "모양을 바꾸려면 이 영역을 지우고 새로 그리세요".
 - [ ] **Step 5: Commit** — `git commit -m "feat(web): draw ellipse and polygon manual regions"`
 
 ### Task 8: 상위 스펙 개정 + 수동 QA·성능 측정
@@ -320,7 +323,7 @@ Answer reference for all rows: 사용자 메시지 "전체 다 권장안으로 �
 - O3: `groupPersons`/`deleteManual`이 override 키를 옮기거나 지움 + 저장 실패 시 렌더 요청 안 함. Task 4·6 테스트.
 - O5: 모양 마스크를 OpenCV 대신 양쪽 순수 래스터 함수 + 공유 `shape-masks.json`으로 비트맵 일치 검증, 1px 확장 제거.
 - O6: 그룹 소속 판정은 트랙 id 또는 분할 조각 id. Task 1 `test_group_membership_after_split`, Task 4 실제 `splitTrack` 케이스.
-- O7: 효과 대상 = `manualOpen` 우선, 수동 대상이면 "원본" 비활성. Task 6 테스트.
+- O7: 효과 대상 = `manualOpen` 우선, 수동 대상이면 "원본" 비활성. Task 6 테스트. → **디자인 리뷰 DD1로 대체**: 대상 규칙 없이 위치로 결정(인물 = TargetDetail, 수동 영역 = ManualBoxCard, 왼쪽 = 기본 효과).
 Approval readiness: PASS (D1, D2, R1–R6, O1–O7; answer refs above)
 
 ### Test coverage diagram (planned)
@@ -405,17 +408,91 @@ None.
 ### Suppressed findings
 - (confidence 4) 배경 효과를 켜면 visible로 푼 얼굴도 흐려지는 동작이 사용자 기대와 다를 수 있음 — 사용자가 1절에서 승인한 동작이라 제기하지 않음.
 
+## Design Review (gstack /plan-design-review, 2026-11-02)
+
+- System audit: UI 범위 = 왼쪽 패널 효과 카드·그리기 도구, 오른쪽 TargetDetail·TargetList·ManualBoxCard, 미리보기 overlay. DESIGN.md 없음 → `apps/web/src/styles.css` 토큰 기준(`/design-consultation`은 권장하지만 이번 범위 밖).
+- Step 0: 5/10 — 동작은 정의됐지만 사용자가 무엇을 편집 중인지·노출 상태·그리기 중 상태가 화면에 정의되지 않음. 집중 영역: 전체 7개 패스(권장).
+- Step 0.5 목업: 생성하지 않음. 레이아웃이 main(b9d87aa)에 이미 확정돼 있고, 목업 보드는 사용자가 직접 고르는 단계라 "전체 권장안으로 진행" 지시와 맞지 않음.
+- Outside voices: Codex(gpt-6-astra, completed) 13건 + Claude 서브에이전트 10건. 핵심 지적이 일치(대상 불명확, 원본=노출 한 번 클릭, 상속/개별 구분 없음, 슬라이더 연속 커밋, 다각형 동작 미정, 상태 누락).
+
+Litmus (Claude / Codex / 합의): 1 브랜드 — / YES / YES · 2 시각 앵커 — / YES / YES(중앙 미리보기) · 3 제목만으로 이해 NO / NO / CONFIRMED 실패 → DD1·DD13 · 4 섹션 하나의 일 NO / NO / CONFIRMED 실패 → DD1 · 5 카드 필요 — / NO / NOT SPEC'D(기존 승인 레이아웃) · 6 모션 — / NO / 해당 없음 · 7 그림자 없이 프리미엄 — / YES / YES. Hard rejection #7(카드 스택 인스펙터): Codex만 지적, 레이아웃은 직전 브랜치에서 사용자 승인 → 재개하지 않음(Pass 4 상한 7).
+
+### Passes
+| Pass | 전 | 후 | 근거 |
+|---|---|---|---|
+| 1 정보 구조 | 4 | 8 | DD1 편집 대상 = 위치, DD13 효과 섹션을 매직 블러 위로, 이름 변경 |
+| 2 상태 | 3 | 8 | DD8 상태 표(효과 변경·블러 미리보기·추적·렌더), DD6 다각형 그리기 상태 |
+| 3 여정 | 5 | 8 | DD2 노출 버튼 분리·멱등, DD5 배경 안내 문구, DD9 저장 후 렌더 |
+| 4 AI slop | 7 | 7 | APP UI, 하드 리젝트 #7은 승인된 기존 레이아웃 |
+| 5 디자인 시스템 | 6 | 8 | DD4 EffectControls 재사용 컴포넌트, DD14 오버레이 토큰 |
+| 6 반응형·접근성 | 3 | 7 | DD10 라벨·aria·포커스·단축키 충돌; 키보드 다각형은 TODO |
+| 7 미결정 | — | 14 resolved, 2 deferred | 아래 |
+
+### Decisions (모두 사용자 지시 "전체 다 권장안으로 진행"에 따른 권장안 자동 채택)
+- DD1 편집 대상은 화면 위치로 결정: 왼쪽 "기본 효과"(effects.default), 인물 = TargetDetail, 수동 영역 = ManualBoxCard. (원칙: 각 화면에 하나의 분명한 다음 행동)
+- DD2 "원본 · 가림 해제"는 효과 세그먼트와 분리된 경고색 버튼, 멱등. 효과 선택 = 가림 + override 한 번의 편집. (원칙: 신뢰는 픽셀 단위로)
+- DD3 상속 표시 "(기본값)" + "기본값 따르기", 목록 태그에 실제 효과.
+- DD4 강도/색상: 드래그 중 미리보기, change에서 1회 커밋; color면 강도 숨김; "강도 3/5".
+- DD5 배경 효과 자체 강도/색상 + "가림을 해제한 인물에도 적용됩니다".
+- DD6 다각형 그리기 동작 전부 명세(가이드 선, Backspace, 첫 점 닫기, 더블클릭 중복 없음, 클램프, 넓이>0, 이유 문구, 도구 전환 시 폐기, initial은 가이드).
+- DD7 다시 그리기는 모양 유지·박스만, 모양 변경은 삭제 후 새로.
+- DD8 상태 표(저장 오류 즉시, Safari 블러 안내, 모든 모양 추적 표시, 추적 실패 문구 교체).
+- DD9 렌더는 진행 중 저장 대기 + 리비전 확인(직렬화).
+- DD10 접근성: 슬라이더·색상 라벨, aria-expanded, status 알림, 포커스 복귀, 포커스된 컨트롤 위 전역 단축키 차단.
+- DD11 추적 실패 문구 "기준 프레임만 가려짐"(렌더 게이트화는 TODO).
+- DD12 그룹 효과 지정은 멤버 조각 개별값을 지움(혼합 상태 없음).
+- DD13 효과 섹션을 매직 블러 카드 위로, "자동/직접 블러" → "자동/직접 가림", "수동 박스" → "수동 영역".
+- DD14 오버레이 색 토큰 `--overlay-fill/line/ink`.
+- TODO A(TODOS.md 추가): 키보드 다각형 그리기, 추적 실패 렌더 게이트.
+
+### NOT in scope (design)
+- 인스펙터 카드 스타일 재설계: 직전 브랜치에서 승인된 레이아웃.
+- DESIGN.md 작성(`/design-consultation`): 토큰은 styles.css로 충분, 별도 작업.
+- 모바일 레이아웃: 스튜디오는 데스크톱 전용(기존 전제).
+
+### What already exists (design)
+- `Seg`(LeftPanel), `.rowbtn`, `.bcard`, `.trk` 추적 표시, `role="switch"` 패턴, `--warn`/`--primary`/`--s*`/`--r-*` 토큰, 저장 오류 배너(`saveError`), TargetDetail 원본/가림 스위치.
+
+## Design Review Completion Summary
+```
+  +====================================================================+
+  |         DESIGN PLAN REVIEW — COMPLETION SUMMARY                    |
+  +====================================================================+
+  | System Audit         | no DESIGN.md (styles.css tokens), UI scope yes |
+  | Step 0               | 5/10, all 7 passes                          |
+  | Pass 1  (Info Arch)  | 4/10 → 8/10 after fixes                     |
+  | Pass 2  (States)     | 3/10 → 8/10 after fixes                     |
+  | Pass 3  (Journey)    | 5/10 → 8/10 after fixes                     |
+  | Pass 4  (AI Slop)    | 7/10 → 7/10 after fixes                     |
+  | Pass 5  (Design Sys) | 6/10 → 8/10 after fixes                     |
+  | Pass 6  (Responsive) | 3/10 → 7/10 after fixes                     |
+  | Pass 7  (Decisions)  | 14 resolved, 2 deferred                     |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (3 items)                           |
+  | What already exists  | written                                     |
+  | TODOS.md updates     | 2 items proposed (added)                    |
+  | Approved Mockups     | 0 generated, 0 approved                     |
+  | Decisions made       | 14 added to plan                            |
+  | Decisions deferred   | 2 (listed below)                            |
+  | Overall design score | 3/10 → 7/10                                 |
+  +====================================================================+
+```
+Deferred (TODOS.md): 키보드 다각형 그리기, 추적 실패 렌더 게이트. Pass 4(승인된 카드 레이아웃)와 Pass 6(키보드 그리기)이 8 미만.
+
+Unresolved decisions: none.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | codex via `/plan-eng-review` | Independent 2nd opinion | 1 | completed | 7 findings (6 High, 1 Medium), all accepted |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_open | 6 issues, 0 critical gaps (all remedies accepted into plan) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| Outside Review | codex via `/plan-eng-review`, `/plan-design-review` | Independent 2nd opinion | 2 | completed | eng 7 findings, design 13 findings; all accepted or deferred to TODOS |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_open | 6 issues, 0 critical gaps (remedies accepted into plan) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | issues_open | score: 3/10 → 7/10, 14 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase, completed, 7 findings (blur edge alpha, polygon transform under propagation, stale overrides + save-failure render, failed-region overlap, raster parity tests, split group membership, manual effect target).
-- **VERDICT:** ENG REVIEW ISSUES OPEN — findings mapped into Tasks 1–8; eng review required again only if the plan changes substantively. Design review recommended (UI scope).
+- **OUTSIDE COVERAGE:** codex plan-review (eng phase) completed, 7 findings; codex design phase completed, 13 findings; Claude design subagent (in-host) completed, 10 findings.
+- **CROSS-MODEL:** design — codex and in-host subagent agree on unclear edit target, one-click exposure via 원본, no inherit/override distinction, continuous slider commits, unspecified polygon drawing, missing states. Codex alone raised the card-stack inspector (not reopened) and the in-flight save race (adopted, DD9).
+- **VERDICT:** NOT CLEARED — Eng Review issues_open (remedies mapped into Tasks 1–8, no open decisions); eng review required. Design review issues_open (2 deferred TODOs, passes 4 and 6 below 8).
 
 NO UNRESOLVED DECISIONS
