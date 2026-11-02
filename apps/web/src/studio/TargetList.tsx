@@ -1,12 +1,15 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { formatDuration } from '../lib/frames';
-import type { ManualEdit, ManualState, Person } from '../lib/types';
+import type { Effect, ManualEdit, ManualState, Person } from '../lib/types';
+import { effectName } from './EffectControls';
 
 interface Props {
   people: Person[];
   selected: Set<string>;
   currentKey: string | null;
   thumbSrc: (path: string) => string;
+  /** effect actually applied to a person (shared priority logic), and whether it is the person's own setting */
+  effectOf: (person: Person) => { effect: Effect; own: boolean };
   onToggleVisible: (key: string, visible: boolean) => void;
   onToggleSelect: (key: string) => void;
   onFocusPerson: (key: string) => void;
@@ -70,6 +73,7 @@ interface RowProps {
   current: boolean;
   editing: boolean;
   suspectBadge: boolean;
+  tag: { effect: Effect; own: boolean };
   thumbSrc: (path: string) => string;
   onToggleVisible: (key: string, visible: boolean) => void;
   onToggleSelect: (key: string) => void;
@@ -140,7 +144,10 @@ function Row(p: RowProps) {
           {p.suspectBadge && <span className="badge-suspect">얼굴 아닐 수 있음</span>}
         </span>
       </div>
-      <span className={`rtag${person.visible ? ' v' : ''}`}>{person.visible ? '원본' : '모자이크'}</span>
+      <span className={`rtag${person.visible ? ' v' : ''}`} data-testid={`rtag-${person.key}`}>
+        {person.visible ? '원본' : effectName(p.tag.effect.type)}
+        {!person.visible && p.tag.own && <i className="own" role="img" aria-label="개별 설정" title="개별 설정" />}
+      </span>
       <button
         type="button"
         className="pl-sw"
@@ -194,6 +201,7 @@ function TargetListInner(p: Props) {
       suspectBadge={suspectBadge}
       thumbSrc={p.thumbSrc}
       onToggleVisible={p.onToggleVisible}
+      tag={p.effectOf(person)}
       onToggleSelect={p.onToggleSelect}
       onFocusPerson={p.onFocusPerson}
       onRename={p.onRename}
@@ -259,7 +267,7 @@ function TargetListInner(p: Props) {
             <div className="tg-head">
               <button type="button" className="tg-toggle" aria-expanded={autoOpen} aria-controls="auto-body" onClick={() => setAutoOpen(!autoOpen)}>
                 {caret}
-                <span>자동 블러</span>
+                <span>자동 가림</span>
                 {' '}
                 <em>{main.length}</em>
               </button>
@@ -304,7 +312,7 @@ function TargetListInner(p: Props) {
             <div className="tg-head">
               <button type="button" className="tg-toggle" aria-expanded={manualGroupOpen} aria-controls="manual-body" onClick={() => setManualGroupOpen(!manualGroupOpen)}>
                 {caret}
-                <span>직접 블러</span>
+                <span>직접 가림</span>
                 {' '}
                 <em>{p.manualList.length}</em>
               </button>
@@ -322,7 +330,7 @@ function TargetListInner(p: Props) {
                       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                         <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />
                       </svg>
-                      <span>수동 박스 {m.id}</span>
+                      <span>수동 영역 {m.id}</span>
                       {p.manualState[m.id] === 'tracking' && (
                         <>
                           <span className="mst">추적 중</span>

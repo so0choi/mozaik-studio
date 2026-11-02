@@ -1,4 +1,6 @@
 import { memo, useState, type ReactNode } from 'react';
+import type { Effect, Effects, Shape } from '../lib/types';
+import { EffectControls } from './EffectControls';
 
 interface Props {
   /** the review card + upcoming list (built by Studio so all handlers stay there) */
@@ -6,8 +8,13 @@ interface Props {
   /** unresolved required items, shown as a badge */
   reviewCount: number;
   /** box tool state: the 사각형 button is the existing box tool */
-  boxActive: boolean;
-  onToggleBox: () => void;
+  /** active drawing tool, or null */
+  drawTool: Shape | null;
+  onSelectTool: (shape: Shape) => void;
+  effects: Effects;
+  filterSupported: boolean;
+  onDefault: (e: Effect) => void;
+  onBackground: (e: Effect | null) => void;
 }
 
 const SOON = '준비 중';
@@ -18,18 +25,6 @@ function Info() {
       <circle cx="8" cy="8" r="6.2" />
       <path d="M8 7.2v3.6M8 5v.1" />
     </svg>
-  );
-}
-
-function Seg({ label, items }: { label: string; items: { name: string; on?: boolean; title?: string }[] }) {
-  return (
-    <div className="seg" role="group" aria-label={label}>
-      {items.map((i) => (
-        <button key={i.name} type="button" className={i.on ? 'on' : undefined} aria-pressed={!!i.on} disabled={!i.on} title={i.title}>
-          {i.name}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -66,17 +61,17 @@ function LeftPanelInner(p: Props) {
           </div>
         </section>
 
-        <section className="bcard" aria-label="자동 블러">
+        <section className="bcard" aria-label="자동 가림">
           <div className="bc-head">
             <h2>
-              자동 블러 <Info />
+              자동 가림 <Info />
             </h2>
             <button
               type="button"
               className="tsw"
               role="switch"
               aria-checked="true"
-              aria-label="자동 블러 켜짐"
+              aria-label="자동 가림 켜짐"
               disabled
               title="얼굴 자동 가림은 끌 수 없습니다"
             />
@@ -94,9 +89,9 @@ function LeftPanelInner(p: Props) {
           </div>
         </section>
 
-        <section className="bcard" aria-label="직접 블러">
+        <section className="bcard" aria-label="직접 가림">
           <div className="bc-head">
-            <h2>직접 블러</h2>
+            <h2>직접 가림</h2>
           </div>
           <p className="sub">영역을 직접 지정합니다</p>
           <div className="tools3">
@@ -105,8 +100,9 @@ function LeftPanelInner(p: Props) {
               className="tool"
               aria-label="박스 그리기"
               aria-keyshortcuts="B"
-              aria-pressed={p.boxActive}
-              onClick={p.onToggleBox}
+              aria-pressed={p.drawTool === 'rect'}
+              data-draw-tool="rect"
+              onClick={() => p.onSelectTool('rect')}
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                 <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />
@@ -114,19 +110,61 @@ function LeftPanelInner(p: Props) {
               <span>사각형</span>
               <kbd>B</kbd>
             </button>
-            <button type="button" className="tool" disabled title={SOON}>
+            <button
+              type="button"
+              className="tool"
+              aria-pressed={p.drawTool === 'ellipse'}
+              data-draw-tool="ellipse"
+              onClick={() => p.onSelectTool('ellipse')}
+            >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                 <ellipse cx="8" cy="8" rx="5.5" ry="4" />
               </svg>
               <span>타원</span>
             </button>
-            <button type="button" className="tool" disabled title={SOON}>
+            <button
+              type="button"
+              className="tool"
+              aria-pressed={p.drawTool === 'polygon'}
+              data-draw-tool="polygon"
+              onClick={() => p.onSelectTool('polygon')}
+            >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
                 <path d="M8 2.5l5.5 4-2 6.5h-7l-2-6.5z" />
               </svg>
               <span>다각형</span>
             </button>
           </div>
+        </section>
+
+        <h2 className="sect">효과</h2>
+        <section className="bcard" aria-label="기본 효과">
+          <div className="bc-head">
+            <h2>기본 효과</h2>
+          </div>
+          <p className="sub">개별 설정이 없는 대상에 적용</p>
+          <EffectControls
+            label="기본 효과 종류"
+            value={p.effects.default}
+            inherited={null}
+            filterSupported={p.filterSupported}
+            onChange={p.onDefault}
+          />
+        </section>
+        <section className="bcard" aria-label="배경 효과">
+          <div className="bc-head">
+            <h2>배경 효과</h2>
+          </div>
+          <EffectControls
+            label="배경 효과 종류"
+            value={p.effects.background}
+            inherited={null}
+            seed={p.effects.default}
+            filterSupported={p.filterSupported}
+            onChange={p.onBackground}
+            onOff={() => p.onBackground(null)}
+          />
+          {p.effects.background && <p className="sub">가림을 해제한 인물에도 적용됩니다</p>}
         </section>
 
         <section className="bcard" aria-label="매직 블러">
@@ -139,40 +177,6 @@ function LeftPanelInner(p: Props) {
           <button type="button" className="wide" disabled title={SOON}>
             대상 선택
           </button>
-        </section>
-
-        <h2 className="sect">효과</h2>
-        <section className="bcard" aria-label="대상 효과">
-          <div className="bc-head">
-            <h2>대상 효과</h2>
-          </div>
-          <Seg
-            label="대상 효과 종류"
-            items={[
-              { name: '원본', title: '인물별로 오른쪽에서 바꾸세요' },
-              { name: '블러', title: SOON },
-              { name: '모자이크', on: true },
-              { name: '색상', title: SOON },
-            ]}
-          />
-          <button type="button" className="rowbtn" disabled title={SOON}>
-            <span>세부 조정</span>
-            <span aria-hidden="true">›</span>
-          </button>
-        </section>
-        <section className="bcard" aria-label="배경 효과">
-          <div className="bc-head">
-            <h2>배경 효과</h2>
-          </div>
-          <Seg
-            label="배경 효과 종류"
-            items={[
-              { name: '끄기', on: true },
-              { name: '블러', title: SOON },
-              { name: '모자이크', title: SOON },
-              { name: '색상', title: SOON },
-            ]}
-          />
         </section>
 
         <div className="lfoot">

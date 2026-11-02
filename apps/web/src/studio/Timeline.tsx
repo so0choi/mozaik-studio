@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { formatDuration, formatTime } from '../lib/frames';
-import type { MaskBox, Person, ReviewItem } from '../lib/types';
+import type { Effect, Person, Region, ReviewItem } from '../lib/types';
 import { Filmstrip } from './Filmstrip';
 
 interface Props {
@@ -15,7 +15,8 @@ interface Props {
   zoom?: number;
   /** filmstrip inputs; the filmstrip row is shown only when all are given */
   videoSrc?: string;
-  masks?: Map<number, MaskBox[]>;
+  regions?: Map<number, Region[]>;
+  background?: Effect | null;
   srcW?: number;
   srcH?: number;
   /** unused since the sample thumbnails row was replaced by the filmstrip (kept for API compatibility) */
@@ -110,7 +111,7 @@ function TimelineInner(p: Props) {
       onClick={() => (resolved ? p.onSeek(m.startFrame) : p.onSelectItem(m.id))}
     />
   );
-  const showFilm = !!p.videoSrc && !!p.masks && !!p.srcW && !!p.srcH;
+  const showFilm = !!p.videoSrc && !!p.regions && !!p.srcW && !!p.srcH;
   return (
     <section className="panel tlpanel" aria-labelledby="tlLabel">
       <div className="tl-head">
@@ -148,7 +149,8 @@ function TimelineInner(p: Props) {
             {showFilm && (
               <Filmstrip
                 src={p.videoSrc!}
-                masks={p.masks!}
+                regions={p.regions!}
+                background={p.background ?? null}
                 srcW={p.srcW!}
                 srcH={p.srcH!}
                 fps={p.fps}

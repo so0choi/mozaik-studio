@@ -1,0 +1,91 @@
+{
+ "cases": [
+  {
+   "fn": "region_block",
+   "args": [
+    10,
+    1
+   ],
+   "expected": 10
+  },
+  {
+   "fn": "region_block",
+   "args": [
+    10,
+    3
+   ],
+   "expected": 20
+  },
+  {
+   "fn": "region_block",
+   "args": [
+    8,
+    5
+   ],
+   "expected": 24
+  },
+  {
+   "fn": "region_sigma",
+   "args": [
+    80,
+    80,
+    1
+   ],
+   "expected": 20.0
+  },
+  {
+   "fn": "region_sigma",
+   "args": [
+    4,
+    4,
+    1
+   ],
+   "expected": 2.0
+  },
+  {
+   "fn": "region_sigma",
+   "args": [
+    40,
+    64,
+    2
+   ],
+   "expected": 15.0
+  },
+  {
+   "fn": "background_block",
+   "args": [
+    640,
+    360,
+    1
+   ],
+   "expected": 9
+  },
+  {
+   "fn": "background_block",
+   "args": [
+    1920,
+    1080,
+    5
+   ],
+   "expected": 81
+  },
+  {
+   "fn": "background_sigma",
+   "args": [
+    640,
+    360,
+    1
+   ],
+   "expected": 6.0
+  },
+  {
+   "fn": "background_sigma",
+   "args": [
+    1920,
+    1080,
+    3
+   ],
+   "expected": 36.0
+  }
+ ]
+}

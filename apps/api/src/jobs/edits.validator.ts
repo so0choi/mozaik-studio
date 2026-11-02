@@ -1,6 +1,27 @@
 import { MANUAL_ID_RE } from './storage';
 
-export const DEFAULT_EDITS = () => ({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [] });
+export const DEFAULT_EDITS = () => ({
+  version: 1,
+  visible: [],
+  groups: [],
+  splits: [],
+  manual: [],
+  reviewed: [],
+  effects: { default: { type: 'mosaic', strength: 1 }, background: null, overrides: {} },
+});
+
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const EFFECT_TYPES = new Set(['mosaic', 'blur', 'color']);
+const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const isEffect = (v: unknown): boolean => {
+  if (!isObj(v) || typeof v.type !== 'string' || !EFFECT_TYPES.has(v.type)) return false;
+  if (v.strength !== undefined && !(isInt(v.strength) && v.strength >= 1 && v.strength <= 5)) return false;
+  if (v.color !== undefined && !(typeof v.color === 'string' && COLOR_RE.test(v.color))) return false;
+  return true;
+};
+const isUnit = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+const isPoints = (v: unknown): boolean =>
+  Array.isArray(v) && v.length >= 3 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every(isUnit));
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200;
@@ -46,6 +67,26 @@ export function validateEdits(
     }
     if (m.trim !== null && !(Array.isArray(m.trim) && m.trim.length === 2 && m.trim.every(isInt))) return bad;
     if (typeof m.deleted !== 'boolean') return bad;
+    if (m.shape !== undefined && !['rect', 'ellipse', 'polygon'].includes(m.shape)) return bad;
+    if (m.shape === 'polygon') {
+      if (!isPoints(m.points)) return bad;
+    } else if (m.points !== undefined) return bad;
+  }
+
+  if (e.effects !== undefined) {
+    const fx = e.effects;
+    if (!isObj(fx) || !isEffect(fx.default)) return bad;
+    if (fx.background !== null && fx.background !== undefined && !isEffect(fx.background)) return bad;
+    if (fx.overrides !== undefined) {
+      if (!isObj(fx.overrides)) return bad;
+      const targets = new Set(known);
+      for (const g of e.groups) targets.add(g.id);
+      for (const m of e.manual) targets.add(m.id);
+      for (const [key, val] of Object.entries(fx.overrides)) {
+        if (!targets.has(key)) return `알 수 없는 대상입니다: ${key}`;
+        if (!isEffect(val)) return bad;
+      }
+    }
   }
   return null;
 }

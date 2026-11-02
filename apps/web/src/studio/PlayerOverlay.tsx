@@ -1,8 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { frameAt } from '../lib/frames';
 import { containRect, toDisplay, type Rect } from '../lib/geometry';
-import { pixelate } from '../lib/pixelate';
-import type { Box, MaskBox } from '../lib/types';
+import { drawFrameEffects } from '../lib/effects';
+import type { Box, Effect, Region } from '../lib/types';
 
 export interface Highlight {
   box: Box;
@@ -18,7 +18,8 @@ interface Props {
   fps: number;
   frameCount: number;
   frame: number;
-  boxes: Map<number, MaskBox[]>;
+  regions: Map<number, Region[]>;
+  background: Effect | null;
   highlight: Highlight | null;
   /** outline of the selected person at a frame (source pixels) */
   focusBoxes: (frame: number) => Box[];
@@ -63,7 +64,7 @@ function PlayerOverlayInner(props: Props) {
       height: v.videoHeight,
       ready: v.readyState >= 2 && !!v.videoWidth,
     };
-    for (const b of p.boxes.get(f) ?? []) pixelate(ctx, src, offRef.current, b, r, p.srcW, p.srcH);
+    drawFrameEffects(ctx, src, offRef.current, p.regions.get(f) ?? [], p.background, r, p.srcW, p.srcH);
 
     for (const fb of p.focusBoxes(f)) {
       const [dx, dy, dw, dh] = toDisplay(fb, p.srcW, p.srcH, r.w, r.h);
@@ -154,7 +155,7 @@ function PlayerOverlayInner(props: Props) {
     const v = videoRef.current;
     if (v && v.paused) mediaTime.current = frame / fps;
     draw();
-  }, [props.boxes, props.highlight, props.focusBoxes, frame, fps, draw, videoRef]);
+  }, [props.regions, props.background, props.highlight, props.focusBoxes, frame, fps, draw, videoRef]);
 
   return (
     <div className="player" ref={wrapRef} data-testid="player">

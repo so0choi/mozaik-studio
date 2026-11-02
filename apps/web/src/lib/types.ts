@@ -1,7 +1,5 @@
 /** [x, y, w, h] in source-video pixels. */
 export type Box = [number, number, number, number];
-/** [x, y, w, h, blockSize] in source-video pixels. */
-export type MaskBox = [number, number, number, number, number];
 
 export interface Track {
   id: string;
@@ -51,11 +49,43 @@ export interface Split {
   frame: number;
 }
 
+export type EffectType = 'mosaic' | 'blur' | 'color';
+
+export interface Effect {
+  type: EffectType;
+  /** integer 1-5 */
+  strength: number;
+  /** #rrggbb, used by type 'color' */
+  color: string;
+}
+
+export interface Effects {
+  default: Effect;
+  background: Effect | null;
+  overrides: Record<string, Effect>;
+}
+
+export type Shape = 'rect' | 'ellipse' | 'polygon';
+
+/** One masked area of one frame, as computed by maskRegions (mirrors the worker's Region). */
+export interface Region {
+  id: string;
+  shape: Shape;
+  box: Box;
+  /** absolute integer coordinates, polygon only */
+  points: [number, number][] | null;
+  effect: Effect;
+  block: number;
+}
+
 export interface ManualEdit {
   id: string;
   anchors: { frame: number; box: Box }[];
   trim: [number, number] | null;
   deleted: boolean;
+  shape?: Shape;
+  /** polygon vertices normalized to the drawn anchor box (u, v in 0..1) */
+  points?: [number, number][];
 }
 
 export interface Edits {
@@ -65,6 +95,7 @@ export interface Edits {
   splits: Split[];
   manual: ManualEdit[];
   reviewed: string[];
+  effects?: Effects;
 }
 
 /** manual/{id}.json */

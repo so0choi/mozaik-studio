@@ -508,7 +508,7 @@ footer { margin-top: 64px; color: var(--muted); font-size: 13px; border-top: 1px
       </dl>
       <h3>어떤 박스를 가리나</h3>
       <p><code>tracks.json</code> + <code>edits.json</code> + <code>manual/*.json</code>을 합쳐 <code>{frame: [[x,y,w,h,block], ...]}</code>을 만든다. 기본은 전부 가림, <code>visible</code>에 있는 트랙·그룹 조각만 뺀다. 분할된 트랙은 <code>t2a</code>/<code>t2b</code> 조각 단위로 판단한다.</p>
-      <p class="files">워커 <code>compose.py</code> <code>mask_boxes()</code> ⇄ 웹 <code>apps/web/src/lib/masks.ts</code> <code>maskBoxes()</code></p>
+      <p class="files">워커 <code>compose.py</code> <code>mask_regions()</code> ⇄ 웹 <code>apps/web/src/lib/masks.ts</code> <code>maskRegions()</code></p>
     </div>
   </div>
 
@@ -523,7 +523,7 @@ footer { margin-top: 64px; color: var(--muted); font-size: 13px; border-top: 1px
   </table></div>
 
   <div class="callout warn">
-    <strong>왜 굳이 맞추나:</strong> 사용자는 미리보기를 보고 "다 가려졌다"고 판단한 뒤 렌더한다. 두 쪽이 다른 프레임이나 다른 박스를 쓰면 미리보기에선 가려졌던 얼굴이 결과 파일에서 드러난다. 그래서 규칙을 <code>contracts/fixtures/</code>에 픽스처(<code>tracks.sample.json</code>, <code>edits.sample.json</code>, <code>manual.sample.json</code>)와 기대값(<code>expected-mask-frames.json</code>)으로 고정하고, 워커 pytest와 웹 Vitest가 <strong>같은 기대값</strong>을 검사한다.
+    <strong>왜 굳이 맞추나:</strong> 사용자는 미리보기를 보고 "다 가려졌다"고 판단한 뒤 렌더한다. 두 쪽이 다른 프레임이나 다른 박스를 쓰면 미리보기에선 가려졌던 얼굴이 결과 파일에서 드러난다. 그래서 규칙을 <code>contracts/fixtures/</code>에 픽스처(<code>tracks.sample.json</code>, <code>edits.sample.json</code>, <code>manual.sample.json</code>)와 기대값(<code>expected-regions.json</code>)으로 고정하고, 워커 pytest와 웹 Vitest가 <strong>같은 기대값</strong>을 검사한다.
   </div>
 </section>
 
