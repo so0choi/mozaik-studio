@@ -117,7 +117,16 @@ def apply_region(src: np.ndarray, out: np.ndarray, region: dict) -> None:
         m = math.ceil(3 * sigma)
         y0, y1 = max(0, rows.start - m), min(fh, rows.stop + m)
         x0, x1 = max(0, cols.start - m), min(fw, cols.stop + m)
-        big = cv2.GaussianBlur(src[y0:y1, x0:x1], (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REPLICATE)
+        win = src[y0:y1, x0:x1]
+        ww, wh = x1 - x0, y1 - y0
+        f = max(1, int(sigma // 4))
+        if f > 1:
+            sw, sh = max(1, -(-ww // f)), max(1, -(-wh // f))
+            small = cv2.resize(win, (sw, sh), interpolation=cv2.INTER_AREA)
+            small = cv2.GaussianBlur(small, (0, 0), sigmaX=sigma / f, borderType=cv2.BORDER_REPLICATE)
+            big = cv2.resize(small, (ww, wh), interpolation=cv2.INTER_LINEAR)
+        else:
+            big = cv2.GaussianBlur(win, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REPLICATE)
         res = big[rows.start - y0 : rows.stop - y0, cols.start - x0 : cols.stop - x0]
     elif kind == "color":
         res = np.empty_like(src[rows, cols])

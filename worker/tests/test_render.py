@@ -288,3 +288,35 @@ def test_render_end_to_end_with_effects(tmp_path, face_image, model_path):
     assert np.abs(s30[corner] - o30[corner]).mean() < 3
     cx, cy = mx + mw // 2, my + mh // 2
     assert np.abs(o30[cy - 5 : cy + 5, cx - 5 : cx + 5] - np.array([0, 255, 0])).mean() < 12
+
+
+def test_reduced_res_blur_not_weaker_than_full_res(face_image):
+    face = cv2.resize(face_image, (200, 200))
+    frame = np.full((300, 300, 3), 90, np.uint8)
+    frame[50:250, 50:250] = face
+    region = _reg((50, 50, 200, 200), _eff("blur", 1))
+    out = frame.copy()
+    fx.apply_region(frame, out, region)
+    sigma = fx.region_sigma(200, 200, 1)
+    m = int(np.ceil(3 * sigma))
+    y0, y1, x0, x1 = max(0, 50 - m), min(300, 250 + m), max(0, 50 - m), min(300, 250 + m)
+    full = cv2.GaussianBlur(frame[y0:y1, x0:x1], (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REPLICATE)
+    full = full[50 - y0 : 250 - y0, 50 - x0 : 250 - x0]
+    new_v, full_v = _lap_var(out[50:250, 50:250]), _lap_var(full)
+    print("laplacian new", new_v, "full", full_v)
+    assert new_v <= 1.5 * full_v + 1e-6
+
+
+@pytest.mark.parametrize("box", [(-20, -15, 60, 50), (130, 90, 60, 50), (-10, 40, 40, 30)])
+@pytest.mark.parametrize("shape", ["rect", "ellipse"])
+def test_blur_region_partially_outside_frame_fills_mask(box, shape):
+    src = np.full((120, 160, 3), 200, np.uint8)
+    out = np.zeros_like(src)
+    region = _reg(box, _eff("blur", 1), shape=shape)
+    fx.apply_region(src, out, region)
+    rows, cols, mask = fx.shape_mask(region, 160, 120)
+    inside = np.zeros(src.shape[:2], bool)
+    inside[rows, cols] = mask
+    assert inside.any()
+    assert (out[inside] == 200).all()
+    assert (out[~inside] == 0).all()
