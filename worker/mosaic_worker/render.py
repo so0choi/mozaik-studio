@@ -11,28 +11,27 @@ import cv2
 import numpy as np
 
 from .compose import mask_regions
+from .effects import apply_background, apply_region, normalize_effects, pixelate  # noqa: F401  (pixelate re-exported)
 from .normalize import ffmpeg_bin, load_meta
 from .status import MSG_RENDER_FAILED, UserFacingError
 
 
-def pixelate(frame: np.ndarray, box, block: int) -> None:
-    """Pixelate `box` in place on a block x block grid whose origin is the box top-left."""
-    x, y, w, h = (int(v) for v in box[:4])
-    fh, fw = frame.shape[:2]
-    x0, y0 = max(0, x), max(0, y)
-    x1, y1 = min(fw, x + w), min(fh, y + h)
-    if x1 <= x0 or y1 <= y0:
-        return
-    # grid origin stays at the (unclamped) box corner
-    ox, oy = x0 - x, y0 - y
-    rw, rh = x1 - x0, y1 - y0
-    cols = -(-(ox + rw) // block)
-    rows = -(-(oy + rh) // block)
-    region = frame[y0:y1, x0:x1]
-    padded = cv2.copyMakeBorder(region, oy, rows * block - oy - rh, ox, cols * block - ox - rw, cv2.BORDER_REPLICATE)
-    small = cv2.resize(padded, (cols, rows), interpolation=cv2.INTER_AREA)
-    big = cv2.resize(small, (cols * block, rows * block), interpolation=cv2.INTER_NEAREST)
-    frame[y0:y1, x0:x1] = big[oy : oy + rh, ox : ox + rw]
+def compose_frame(src: np.ndarray, regions: list[dict], background: dict | None, log: Callable[[str], None]) -> np.ndarray:
+    """Spec 4.2 order: background over the whole frame, every region from the ORIGINAL src on top,
+    then each failed region's frame-clipped box painted black (shape ignored). A background
+    exception propagates (render fails); a region exception is logged and masked black."""
+    out = apply_background(src, background) if background else src.copy()
+    failed: list[list[int]] = []
+    for r in regions:
+        try:
+            apply_region(src, out, r)
+        except Exception as e:  # never leave a face exposed: black it out below
+            log(f"region {r.get('id')} failed: {e!r}")
+            failed.append(list(r["box"][:4]))
+    fh, fw = out.shape[:2]
+    for x, y, w, h in failed:
+        out[max(0, int(y)) : max(0, min(fh, int(y) + int(h))), max(0, int(x)) : max(0, min(fw, int(x) + int(w)))] = 0
+    return out
 
 
 def _read_json(path: Path, default):
@@ -53,6 +52,7 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
     meta = load_meta(job_dir)
     tracks_doc, edits, manual = load_inputs(job_dir)
     regions = mask_regions(tracks_doc, edits, manual)
+    background = normalize_effects(edits)["background"]
     src = job_dir / "normalized.mp4"
     out = job_dir / "output.mp4"
     tmp = job_dir / "output.tmp.mp4"
@@ -83,8 +83,10 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
                 ok, frame = cap.read()
                 if not ok:
                     break
-                for r in regions.get(idx, ()):
-                    pixelate(frame, tuple(r["box"]), r["block"])
+                try:
+                    frame = compose_frame(frame, regions.get(idx, []), background, lambda m: log.write((m + "\n").encode()))
+                except Exception:
+                    raise UserFacingError(MSG_RENDER_FAILED)
                 proc.stdin.write(np.ascontiguousarray(frame).tobytes())
                 idx += 1
                 written = idx
