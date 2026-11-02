@@ -148,6 +148,17 @@ describe('BoxTool polygon', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it('a sliver that rounds to a zero-area polygon in unit coordinates cannot be confirmed (the API rejects it)', () => {
+    const { tool, onConfirm } = setup({ shape: 'polygon', srcW: 200000, srcH: 200000, rect: { x: 0, y: 0, w: 200000, h: 200000 } });
+    click(tool, 0, 0);
+    click(tool, 199999, 199999);
+    click(tool, 100000, 100001); // 1px off the diagonal: normalized (0.5, 0.5) after round4 -> collinear
+    expect(confirmBtn()).toBeDisabled();
+    expect(status()).toHaveTextContent('일직선');
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it('duplicate points disable confirm and say why', () => {
     const { tool } = setup({ shape: 'polygon' });
     click(tool, 100, 100);

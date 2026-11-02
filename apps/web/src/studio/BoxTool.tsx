@@ -22,8 +22,25 @@ const MIN_BOX = 4;
 const CLOSE_PX = 8;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
+/** Outward frame-clamped bounding box of the (deduped) polygon and its box-relative points (4 decimals). */
+function normalizePolygon(pts: Vertex[], srcW: number, srcH: number) {
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  // outward bounding box (floor the min, ceil the max) clamped to the frame: no vertex is pulled inward
+  const x0 = Math.max(0, Math.min(srcW - 1, Math.floor(Math.min(...xs))));
+  const y0 = Math.max(0, Math.min(srcH - 1, Math.floor(Math.min(...ys))));
+  const x1 = Math.min(srcW, Math.max(x0 + 1, Math.ceil(Math.max(...xs))));
+  const y1 = Math.min(srcH, Math.max(y0 + 1, Math.ceil(Math.max(...ys))));
+  const b: [number, number, number, number] = [x0, y0, x1 - x0, y1 - y0];
+  const norm = pts.map(
+    ([x, y]) =>
+      [round4(Math.max(0, Math.min(1, (x - b[0]) / b[2]))), round4(Math.max(0, Math.min(1, (y - b[1]) / b[3])))] as [number, number],
+  );
+  return { b, norm };
+}
+
 /** What stops a polygon from being confirmed, or null when it is valid. */
-function polygonProblem(raw: Vertex[]): string | null {
+function polygonProblem(raw: Vertex[], srcW: number, srcH: number): string | null {
   if (raw.length < 3) return '꼭짓점을 3개 이상 찍으세요';
   const pts = dedupeVertices(raw);
   if (pts.length < 3) return '서로 다른 꼭짓점이 3개 이상 필요합니다';
@@ -33,6 +50,9 @@ function polygonProblem(raw: Vertex[]): string | null {
   if (Math.max(...xs) - Math.min(...xs) < MIN_BOX || Math.max(...ys) - Math.min(...ys) < MIN_BOX) {
     return '영역이 너무 작습니다 (가로·세로 4px 이상)';
   }
+  // the API checks the saved (box-relative, 4-decimal) points: a near-collinear sliver that rounds to
+  // zero area there would be rejected, so it cannot be confirmed here either
+  if (polygonArea(normalizePolygon(pts, srcW, srcH).norm) < 1e-9) return '꼭짓점이 거의 일직선이라 영역이 없습니다';
   return null;
 }
 
@@ -72,22 +92,10 @@ export function BoxTool({
     restoreFocus();
   };
 
-  const problem = polyDraw ? polygonProblem(verts) : null;
+  const problem = polyDraw ? polygonProblem(verts, srcW, srcH) : null;
   const confirmPolygon = () => {
-    if (!polyDraw || polygonProblem(verts)) return;
-    const pts = dedupeVertices(verts);
-    const xs = pts.map((p) => p[0]);
-    const ys = pts.map((p) => p[1]);
-    // outward bounding box (floor the min, ceil the max) clamped to the frame: no vertex is pulled inward
-    const x0 = Math.max(0, Math.min(srcW - 1, Math.floor(Math.min(...xs))));
-    const y0 = Math.max(0, Math.min(srcH - 1, Math.floor(Math.min(...ys))));
-    const x1 = Math.min(srcW, Math.max(x0 + 1, Math.ceil(Math.max(...xs))));
-    const y1 = Math.min(srcH, Math.max(y0 + 1, Math.ceil(Math.max(...ys))));
-    const b: [number, number, number, number] = [x0, y0, x1 - x0, y1 - y0];
-    const norm = pts.map(
-      ([x, y]) =>
-        [round4(Math.max(0, Math.min(1, (x - b[0]) / b[2]))), round4(Math.max(0, Math.min(1, (y - b[1]) / b[3])))] as [number, number],
-    );
+    if (!polyDraw || polygonProblem(verts, srcW, srcH)) return;
+    const { b, norm } = normalizePolygon(dedupeVertices(verts), srcW, srcH);
     onConfirm(b, norm);
     restoreFocus();
   };
