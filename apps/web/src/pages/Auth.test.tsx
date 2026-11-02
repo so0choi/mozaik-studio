@@ -46,7 +46,7 @@ describe('Login', () => {
 });
 
 const job = (over: Partial<Job>): Job => ({
-  id: 'j1', filename: 'a.mp4', createdAt: new Date().toISOString(), state: 'ready', progress: 0, error: null, hasOutput: false, ...over,
+  id: 'j1', filename: 'a.mp4', createdAt: new Date().toISOString(), state: 'ready', progress: 0, error: null, hasOutput: false, outputStale: false, ...over,
 });
 
 describe('Jobs', () => {

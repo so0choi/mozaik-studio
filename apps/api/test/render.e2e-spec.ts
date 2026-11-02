@@ -16,6 +16,7 @@ function seed(ctx: TestCtx, id: string, files: Record<string, Buffer | object>) 
     fs.writeFileSync(p, Buffer.isBuffer(content) ? content : JSON.stringify(content));
   }
 }
+const EDITS_A = { version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1', 'r2'] };
 const review2 = {
   items: [
     { id: 'r1', type: 'gap', trackIds: ['t1'], startFrame: 1, endFrame: 5, box: [1, 1, 2, 2] },
@@ -80,7 +81,7 @@ describe('render gate, manual, output (A3)', () => {
 
   it('a pending re-render hides the previous output until the worker picks it up', async () => {
     await putEdits({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1', 'r2'] });
-    seed(ctx, id, { 'output.mp4': Buffer.from('old-output') });
+    seed(ctx, id, { 'output.mp4': Buffer.from('old-output'), 'output.edits.json': EDITS_A });
     await ctx.redis.hset(`job:${id}:status`, { state: 'rendered', progress: '100', updatedAt: new Date(Date.now() - 1000).toISOString() });
     expect((await post('/render')).status).toBe(202);
     const job = (await request(ctx.server).get(`/api/jobs/${id}`).set('Cookie', cookie)).body;
@@ -110,11 +111,53 @@ describe('render gate, manual, output (A3)', () => {
 
   it('output: 404 until output.mp4 exists, then an attachment named after the original', async () => {
     expect((await request(ctx.server).get(`/api/jobs/${id}/output`).set('Cookie', cookie)).status).toBe(404);
-    seed(ctx, id, { 'output.mp4': Buffer.from('video-bytes') });
+    await putEdits(EDITS_A);
+    seed(ctx, id, { 'output.mp4': Buffer.from('video-bytes'), 'output.edits.json': EDITS_A });
     const r = await request(ctx.server).get(`/api/jobs/${id}/output`).set('Cookie', cookie);
     expect(r.status).toBe(200);
     expect(r.headers['content-disposition']).toMatch(/^attachment/);
     expect(decodeURIComponent(r.headers['content-disposition'])).toContain('mosaic_결과 영상.final.mp4');
+  });
+
+  describe('output binding to the rendered edits', () => {
+    const job = async () => (await request(ctx.server).get(`/api/jobs/${id}`).set('Cookie', cookie)).body;
+    const dl = () => request(ctx.server).get(`/api/jobs/${id}/output`).set('Cookie', cookie);
+
+    it('same edits as the render -> hasOutput true, not stale, downloadable', async () => {
+      await putEdits(EDITS_A);
+      seed(ctx, id, { 'output.mp4': Buffer.from('v'), 'output.edits.json': { reviewed: ['r1', 'r2'], manual: [], splits: [], groups: [], visible: [], version: 1 } });
+      expect(await job()).toMatchObject({ hasOutput: true, outputStale: false });
+      expect((await dl()).status).toBe(200);
+    });
+
+    it('edits changed after the render -> hasOutput false, outputStale true, download refused', async () => {
+      await putEdits(EDITS_A);
+      seed(ctx, id, { 'output.mp4': Buffer.from('v'), 'output.edits.json': EDITS_A });
+      expect((await putEdits({ ...EDITS_A, visible: ['t2'] })).status).toBe(200);
+      expect(await job()).toMatchObject({ hasOutput: false, outputStale: true });
+      const r = await dl();
+      expect(r.status).toBe(409);
+      expect(r.body.message).toBe('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.');
+      // reverting to the rendered edits makes it valid again
+      await putEdits(EDITS_A);
+      expect(await job()).toMatchObject({ hasOutput: true, outputStale: false });
+    });
+
+    it('output.mp4 without output.edits.json is never offered (stale)', async () => {
+      await putEdits(EDITS_A);
+      seed(ctx, id, { 'output.mp4': Buffer.from('v') });
+      expect(await job()).toMatchObject({ hasOutput: false, outputStale: true });
+      expect((await dl()).status).toBe(409);
+    });
+
+    it('no edits.json saved: default edits match a default-edits render', async () => {
+      seed(ctx, id, { 'output.mp4': Buffer.from('v'), 'output.edits.json': { version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [], effects: { default: { type: 'mosaic', strength: 1 }, background: null, overrides: {} } } });
+      expect(await job()).toMatchObject({ hasOutput: true, outputStale: false });
+    });
+
+    it('no output.mp4 -> hasOutput false and outputStale false', async () => {
+      expect(await job()).toMatchObject({ hasOutput: false, outputStale: false });
+    });
   });
 
   describe('manual', () => {

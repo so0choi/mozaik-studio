@@ -63,6 +63,8 @@ function isTyping(t: EventTarget | null): boolean {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
 }
 
+const STALE_NOTICE = '렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.';
+
 export function Studio() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -189,7 +191,11 @@ export function Studio() {
         if (stop) return;
         setJob(j);
         if (j.state === 'rendering') setRenderPhase('rendering');
-        if (j.state === 'rendered' && j.hasOutput) setOutputReady(true);
+        // the server decides: hasOutput is true only while output.mp4 matches the saved edits
+        if (saveRevision.current === 0) {
+          if (j.state === 'rendered' && j.hasOutput) setOutputReady(true);
+          else if (j.outputStale && j.state !== 'rendering') setNotice(STALE_NOTICE);
+        }
         if (!EDITABLE.includes(j.state) && j.state !== 'failed') t = setTimeout(tick, 2000);
       } catch (e) {
         if (!stop) fail(e);
@@ -728,13 +734,13 @@ export function Studio() {
       try {
         const j = await api.getJob(id);
         setJob(j);
-        if (j.state === 'rendered' && j.hasOutput) {
+        if (j.state === 'rendered' && (j.hasOutput || j.outputStale)) {
           setRenderPhase('idle');
-          if (saveRevision.current === renderRevision.current) {
+          if (j.hasOutput && saveRevision.current === renderRevision.current) {
             setOutputReady(true);
           } else {
             setOutputReady(false);
-            setNotice('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.');
+            setNotice(STALE_NOTICE);
           }
         } else if (j.state === 'failed' || (j.state === 'ready' && j.error)) {
           setRenderPhase('idle');

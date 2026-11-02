@@ -48,9 +48,15 @@ def _read_json(path: Path, default):
     return default
 
 
+def default_edits() -> dict:
+    """Same object as the API's DEFAULT_EDITS: a job never saved edits for is bound to exactly this."""
+    return {"version": 1, "visible": [], "groups": [], "splits": [], "manual": [], "reviewed": [],
+            "effects": {"default": {"type": "mosaic", "strength": 1}, "background": None, "overrides": {}}}
+
+
 def load_inputs(job_dir: Path):
     tracks_doc = json.loads((job_dir / "tracks.json").read_text(encoding="utf-8"))
-    edits = _read_json(job_dir / "edits.json", {"version": 1, "visible": [], "groups": [], "splits": [], "manual": [], "reviewed": []})
+    edits = _read_json(job_dir / "edits.json", default_edits())
     manual = [json.loads(p.read_text(encoding="utf-8")) for p in sorted((job_dir / "manual").glob("*.json"))]
     return tracks_doc, edits, manual
 
@@ -126,7 +132,15 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
     if rc != 0 or written == 0 or not tmp.exists():
         tmp.unlink(missing_ok=True)
         raise UserFacingError(MSG_RENDER_FAILED)
+    # Bind output.mp4 to the exact edits it was rendered from (the API serves it only while they still
+    # match). Drop the old binding first: a crash between the two replaces then leaves an unbound output
+    # (refused), never a new output paired with the previous render's binding.
+    binding = job_dir / "output.edits.json"
+    binding_tmp = job_dir / "output.edits.json.tmp"
+    binding.unlink(missing_ok=True)
     os.replace(tmp, out)
+    binding_tmp.write_text(json.dumps(edits, ensure_ascii=False), encoding="utf-8")
+    os.replace(binding_tmp, binding)
     log_path.unlink(missing_ok=True)
     if progress:
         progress("rendering", 100)

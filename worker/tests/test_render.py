@@ -393,3 +393,39 @@ def test_normalize_effects_background_only_when_dict():
 def test_normalize_effects_empty_dict_background_is_none_like_the_web():
     from mosaic_worker.effects import normalize_effects
     assert normalize_effects({"effects": {"background": {}}})["background"] is None
+
+
+def test_render_binds_output_to_the_edits_it_rendered(tmp_path, face_image, model_path):
+    _setup_job(tmp_path, face_image, model_path, False)
+    edits = {"version": 1, "visible": ["zz"], "groups": [], "splits": [], "manual": [], "reviewed": []}
+    (tmp_path / "edits.json").write_text(json.dumps(edits))
+    (tmp_path / "output.edits.json").write_text('{"stale": true}')  # from an earlier render
+    render(tmp_path)
+    assert json.loads((tmp_path / "output.edits.json").read_text()) == edits
+    assert not list(tmp_path.glob("output.edits.json.*"))
+
+
+def test_render_without_edits_file_binds_the_default_edits(tmp_path, face_image, model_path):
+    _setup_job(tmp_path, face_image, model_path, False)
+    (tmp_path / "edits.json").unlink(missing_ok=True)
+    render(tmp_path)
+    assert json.loads((tmp_path / "output.edits.json").read_text()) == {
+        "version": 1, "visible": [], "groups": [], "splits": [], "manual": [], "reviewed": [],
+        "effects": {"default": {"type": "mosaic", "strength": 1}, "background": None, "overrides": {}}}  # == the API's default
+
+
+def test_failed_render_leaves_no_binding_for_the_old_output(tmp_path, face_image, model_path, monkeypatch):
+    _setup_job(tmp_path, face_image, model_path, False)
+    render(tmp_path)
+    assert (tmp_path / "output.edits.json").exists()
+    def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr("mosaic_worker.render.apply_background", boom)
+    (tmp_path / "edits.json").write_text(json.dumps(
+        {"version": 1, "visible": [], "groups": [], "splits": [], "manual": [], "reviewed": [],
+         "effects": {"default": _eff("color", 1, "#ff0000"), "background": _eff("blur", 5), "overrides": {}}}))
+    with pytest.raises(UserFacingError):
+        render(tmp_path)
+    # the old output.mp4 was not touched, so its binding must still describe it
+    bound = json.loads((tmp_path / "output.edits.json").read_text())
+    assert bound["effects"]["background"] is None  # the first render's edits, not the failed render's

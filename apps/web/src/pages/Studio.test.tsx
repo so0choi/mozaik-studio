@@ -8,7 +8,7 @@ import { installFetch, type Call, type Handler } from '../test/mockFetch';
 import { Studio } from './Studio';
 
 const job = (over: Partial<Job> = {}): Job => ({
-  id: 'j1', filename: 'clip.mp4', createdAt: new Date().toISOString(), state: 'ready', progress: 100, error: null, hasOutput: false, ...over,
+  id: 'j1', filename: 'clip.mp4', createdAt: new Date().toISOString(), state: 'ready', progress: 100, error: null, hasOutput: false, outputStale: false, ...over,
 });
 const emptyEdits: Edits = { version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [] };
 
@@ -1099,6 +1099,36 @@ describe('Studio save-gated render', () => {
     await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
     expect(await screen.findByText('렌더 중')).toBeInTheDocument();
     await toggle('t3', '인물 3'); // edit during rendering
+    await waitFor(() => expect(document.querySelector('.sr[aria-live]')).toHaveTextContent('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.'), { timeout: 6000 });
+    expect(screen.queryByRole('link', { name: '다운로드' })).toBeNull();
+  }, 10000);
+
+  it('after a reload, a render that predates the saved edits is not offered and the notice shows', async () => {
+    setup({ edits: resolved, job: job({ state: 'rendered', hasOutput: false, outputStale: true }) });
+    await card('t1');
+    await waitFor(() => expect(document.querySelector('.sr[aria-live]')).toHaveTextContent('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.'));
+    expect(screen.queryByRole('link', { name: '다운로드' })).toBeNull();
+    expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeInTheDocument();
+  });
+
+  it('after a reload, a render matching the saved edits is offered for download', async () => {
+    setup({ edits: resolved, job: job({ state: 'rendered', hasOutput: true }) });
+    await card('t1');
+    expect(await screen.findByRole('link', { name: '다운로드' })).toBeInTheDocument();
+  });
+
+  it('a render that finishes stale on the server is not offered even if nothing changed locally', async () => {
+    let requested = false;
+    setup({
+      edits: resolved,
+      extra: (c) => {
+        if (c.path === '/api/jobs/j1/render') { requested = true; return { status: 202, body: {} }; }
+        if (c.path === '/api/jobs/j1' && c.method === 'GET' && requested) return { body: job({ state: 'rendered', hasOutput: false, outputStale: true }) };
+        return undefined;
+      },
+    });
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
     await waitFor(() => expect(document.querySelector('.sr[aria-live]')).toHaveTextContent('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.'), { timeout: 6000 });
     expect(screen.queryByRole('link', { name: '다운로드' })).toBeNull();
   }, 10000);
