@@ -1,7 +1,5 @@
 /** [x, y, w, h] in source-video pixels. */
 export type Box = [number, number, number, number];
-/** [x, y, w, h, blockSize] in source-video pixels. Temporary drawing input (rect mosaic) until region drawing lands. */
-export type MaskBox = [number, number, number, number, number];
 
 export interface Track {
   id: string;

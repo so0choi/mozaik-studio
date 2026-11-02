@@ -1,6 +1,6 @@
 import { normalizeEffects, regionBlock } from './effectParams';
 import { pieces, visibleIds } from './pieces';
-import type { Box, Edits, Effect, ManualDoc, ManualEdit, MaskBox, Region, Shape, TracksDoc } from './types';
+import type { Box, Edits, Effect, ManualDoc, ManualEdit, Region, Shape, TracksDoc } from './types';
 
 /** Line-by-line port of worker/mosaic_worker/compose.py (mask_regions). An exposed face is the worst failure: keep the two in sync. */
 
@@ -172,13 +172,4 @@ export function maskRegions(
 
   for (const list of perFrame.values()) list.sort((a, b) => a.box[0] - b.box[0] || a.box[1] - b.box[1]);
   return perFrame;
-}
-
-/** Temporary (rect mosaic drawing): region -> [x, y, w, h, block]. Replaced when region drawing lands. */
-export function regionBoxes(regions: Map<number, Region[]>): Map<number, MaskBox[]> {
-  const out = new Map<number, MaskBox[]>();
-  for (const [f, rs] of regions) {
-    out.set(f, rs.map((r) => [r.box[0], r.box[1], r.box[2], r.box[3], r.block]));
-  }
-  return out;
 }

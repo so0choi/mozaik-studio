@@ -1,14 +1,15 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { boxesForThumb, sampleFrames, scaleBoxes, tileCount } from '../lib/filmstrip';
-import { pixelate } from '../lib/pixelate';
-import type { MaskBox } from '../lib/types';
+import { drawFrameEffects } from '../lib/effects';
+import { regionsForThumb, sampleFrames, scaleRegions, tileCount } from '../lib/filmstrip';
+import type { Effect, Region } from '../lib/types';
 
 const THUMB_W = 96;
 const SEEK_TIMEOUT_MS = 4000;
 
 interface Props {
   src: string;
-  masks: Map<number, MaskBox[]>;
+  regions: Map<number, Region[]>;
+  background: Effect | null;
   srcW: number;
   srcH: number;
   fps: number;
@@ -46,10 +47,10 @@ function seekTo(v: HTMLVideoElement, t: number, signal: { aborted: boolean }): P
 
 /**
  * Row of thumbnails. Raw frames are decoded into OFF-SCREEN canvases only; what is shown is always a
- * copy on which every mask box has been pixelated (re-drawn whenever the masks change). An
+ * copy on which every region has its effect drawn (re-drawn whenever the regions or background change). An
  * undecodable frame stays a grey tile.
  */
-function FilmstripInner({ src, masks, srcW, srcH, fps, frameCount, contentWidth }: Props) {
+function FilmstripInner({ src, regions, background, srcW, srcH, fps, frameCount, contentWidth }: Props) {
   const n = tileCount(contentWidth);
   const [wantN, setWantN] = useState(n);
   const [urls, setUrls] = useState<(string | null)[]>([]);
@@ -107,7 +108,7 @@ function FilmstripInner({ src, masks, srcW, srcH, fps, frameCount, contentWidth 
     };
   }, [src, wantN, fps, frameCount, srcW, srcH, thumbH]);
 
-  // (re)compose the visible thumbnails: cached raw frame + CURRENT masks, pixelated
+  // (re)compose the visible thumbnails: cached raw frame + CURRENT regions and background
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const frames = sampleFrames(frameCount, wantN);
@@ -121,9 +122,9 @@ function FilmstripInner({ src, masks, srcW, srcH, fps, frameCount, contentWidth 
       const ctx = c.getContext('2d');
       if (!ctx) return null;
       ctx.drawImage(raw, 0, 0);
-      const boxes = scaleBoxes(boxesForThumb(masks, f), srcW, srcH, THUMB_W, thumbH);
+      const scaled = scaleRegions(regionsForThumb(regions, f), srcW, srcH, THUMB_W, thumbH);
       const source = { image: raw, width: THUMB_W, height: thumbH, ready: true };
-      for (const b of boxes) pixelate(ctx, source, off, b, { x: 0, y: 0, w: THUMB_W, h: thumbH }, THUMB_W, thumbH);
+      drawFrameEffects(ctx, source, off, scaled, background, { x: 0, y: 0, w: THUMB_W, h: thumbH }, THUMB_W, thumbH);
       try {
         return c.toDataURL('image/jpeg', 0.7);
       } catch {
@@ -131,7 +132,7 @@ function FilmstripInner({ src, masks, srcW, srcH, fps, frameCount, contentWidth 
       }
     });
     setUrls(out);
-  }, [masks, rawVersion, wantN, frameCount, srcW, srcH, thumbH]);
+  }, [regions, background, rawVersion, wantN, frameCount, srcW, srcH, thumbH]);
 
   return (
     <div className="film" aria-hidden="true" data-testid="filmstrip">

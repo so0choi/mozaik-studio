@@ -17,7 +17,8 @@ import {
 } from '../lib/edits';
 import { enlargeBox } from '../lib/geometry';
 import { emptyHistory, push as pushHistory, redo as redoHistory, undo as undoHistory, type History } from '../lib/history';
-import { maskRegions, regionBoxes } from '../lib/masks';
+import { normalizeEffects } from '../lib/effectParams';
+import { maskRegions } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
 import { formatDuration } from '../lib/frames';
@@ -222,8 +223,7 @@ export function Studio() {
     () => (tracks ? maskRegions(tracks, edits, Object.values(manualDocs)) : new Map()),
     [tracks, edits, manualDocs],
   );
-  // temporary: rect mosaic drawing from regions until region drawing lands
-  const masks = useMemo(() => regionBoxes(regions), [regions]);
+  const background = useMemo(() => normalizeEffects(edits).background, [edits]);
   const reviewed = useMemo(() => new Set(edits.reviewed), [edits.reviewed]);
   // only items that can still expose a face given the current visibility edits (same rule as the API)
   const unresolved = useMemo(() => requiredItems(reviewItems, edits), [reviewItems, edits]);
@@ -930,7 +930,8 @@ export function Studio() {
             fps={fps}
             frameCount={tracks.frameCount}
             frame={frame}
-            boxes={masks}
+            regions={regions}
+            background={background}
             highlight={highlight}
             focusBoxes={focusBoxes}
             onFrame={setFrame}
@@ -967,7 +968,8 @@ export function Studio() {
             activeId={activeItem?.id ?? null}
             zoom={zoom}
             videoSrc={videoUrl(id)}
-            masks={masks}
+            regions={regions}
+            background={background}
             srcW={tracks.width}
             srcH={tracks.height}
             onSeek={seek}

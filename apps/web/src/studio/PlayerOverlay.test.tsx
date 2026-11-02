@@ -5,7 +5,7 @@ import { PlayerOverlay } from './PlayerOverlay';
 
 const base = {
   src: '/v.mp4', srcW: 640, srcH: 360, fps: 30, frameCount: 90, frame: 0,
-  boxes: new Map(), highlight: null, focusBoxes: () => [],
+  regions: new Map(), background: null, highlight: null, focusBoxes: () => [],
 };
 
 describe('PlayerOverlay frame clock', () => {
