@@ -86,7 +86,7 @@
   "personKey": "g1",
   "pieceIds": ["t3", "t17a"],
   "tracksVersion": "<tracks.json의 sha256 앞 16자>",
-  "splitsVersion": "<edits.splits 정규화 해시 앞 16자>",
+  "splits": [{"trackId": "t2", "frame": 1200}],
   "params": {"showScore": 0.45, "checkScore": 0.6, "minFacePx": 60, "minDets": 15,
              "model": "face_recognition_sface_2021dec.onnx", "modelSha256": "0ba9fbfa…"},
   "truncated": false,
@@ -96,7 +96,7 @@
 ```
 
 - `candidates`에는 `SHOW_SCORE` 이상만, 유사도는 소수 둘째 자리로 반올림해 저장한다.
-- 같은 작업에서 새로 찾으면 파일을 교체한다. 단 `dismissed`는 같은 `personKey`일 때 이어받는다.
+- 같은 작업에서 새로 찾으면 파일을 교체한다. 단 이전 결과의 `pieceIds`가 새 `pieceIds`에 모두 들어 있으면(같은 사람이 조각을 더 얻은 경우) `dismissed`를 이어받는다. 묶을 때마다 그룹 ID가 바뀌므로 `personKey`로는 비교하지 않는다.
 - 쓰기 직전에 작업 폴더가 있는지 다시 확인하고, 없으면 쓰지 않는다(지워진 작업 폴더를 되살리지 않음).
 - 실패 시 `state: failed`, `error`에 사용자용 문구(모델 없음, 영상 읽기 실패 등).
 
@@ -129,11 +129,12 @@
 
 ### 5.4 결과 무효화
 
-- 화면은 결과를 받을 때 `tracksVersion`, `splitsVersion`을 현재 값과 비교한다. 다르면 "편집이 바뀌어 다시 찾아야 합니다"를 보여 주고 후보를 쓰지 않는다.
+- API는 `GET` 응답에 `stale`을 넣는다. 결과의 `tracksVersion`이 현재 `tracks.json`의 해시와 다르거나, 결과의 `splits`가 현재 `edits.json`의 분할과 다르면 `true`. 화면은 `stale`이면 "편집이 바뀌어 다시 찾아야 합니다"를 보여 주고 후보를 쓰지 않는다.
 
 ## 6. 웹
 
 - 오른쪽 상세(`TargetDetail`)에 [이 사람 더 찾기] 버튼, 결과 카드(후보 썸네일 격자, 체크박스, [아님], [선택한 조각을 이 사람에 추가]).
+- 후보 중 이미 **다른 사람의 그룹**에 들어 있는 조각은 보여 주지 않는다(검수자가 이미 다른 사람으로 정한 조각). 대상 사람에 이미 들어 있는 조각도 마찬가지다.
 - 썸네일은 기존 트랙 썸네일을 쓴다. 분할된 조각은 그 조각 구간의 샘플이 있으면 그것을, 없으면 트랙 썸네일에 "분할된 조각" 표시.
 - 추가 동작:
   - 대상 사람과 후보 조각들을 `groupPersons`로 묶는다. `groupPersons`는 묶는 사람 중 하나라도 가림이면 결과를 가림으로 만든다.
