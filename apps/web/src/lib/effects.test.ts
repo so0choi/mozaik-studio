@@ -8,6 +8,7 @@ type Call = { fn: string; args: unknown[]; filter: string; op: string; canvas: s
 let calls: Call[];
 let filterSupported: boolean;
 let putData: Uint8ClampedArray[];
+let protoHasFilter: boolean;
 
 function fakeCtx(name: string): CanvasRenderingContext2D {
   let filter = 'none';
@@ -31,6 +32,7 @@ function fakeCtx(name: string): CanvasRenderingContext2D {
     fillStyle: '',
     imageSmoothingEnabled: true,
     createImageData: (w: number, h: number) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+    getImageData: () => ({ data: new Uint8ClampedArray([0, 0, 0, filterSupported ? 128 : 0]) }),
     putImageData: (img: { data: Uint8ClampedArray }, ...rest: unknown[]) => {
       putData.push(new Uint8ClampedArray(img.data));
       log('putImageData')(img, ...rest);
@@ -62,7 +64,10 @@ beforeEach(() => {
   calls = [];
   putData = [];
   filterSupported = true;
+  protoHasFilter = true;
+  vi.stubGlobal('CanvasRenderingContext2D', class {});
   resetFilterSupportCache();
+  if (protoHasFilter) Object.defineProperty((globalThis as never as { CanvasRenderingContext2D: { prototype: object } }).CanvasRenderingContext2D.prototype, 'filter', { value: 'none', writable: true });
   const ctxs = new Map<HTMLCanvasElement, CanvasRenderingContext2D>();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
     if (!ctxs.has(this)) ctxs.set(this, fakeCtx(this === off ? 'off' : 'aux'));
@@ -71,7 +76,10 @@ beforeEach(() => {
   off = document.createElement('canvas');
   ctx = fakeCtx('main');
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('not ready', () => {
   it('grey fill over every region box', () => {
@@ -155,7 +163,7 @@ describe('regions', () => {
   it('blur skipped when ctx.filter unsupported', () => {
     filterSupported = false;
     run([region({ effect: blur })]);
-    expect(calls.some((c) => c.filter.startsWith('blur'))).toBe(false);
+    expect(calls.some((c) => c.canvas !== 'aux' && c.filter.startsWith('blur'))).toBe(false);
     expect(calls.filter((c) => c.canvas === 'off' && c.fn === 'drawImage').length).toBeGreaterThan(0); // underlay
     expect(calls.some((c) => c.canvas === 'main' && c.fn === 'drawImage')).toBe(true);
   });
@@ -178,7 +186,7 @@ describe('regions', () => {
     expect(di).toBeDefined();
     // composite mode is restored before the final display draw
     const final = calls.find((c) => c.canvas === 'main' && c.fn === 'drawImage')!;
-    expect(final.args.slice(5)).toEqual([60, 70, 20.5, 15.5]);
+    expect(final.args.slice(5)).toEqual([60, 70, 21, 16]);
   });
 
   it('polygon points are made relative to the box origin', () => {
@@ -203,12 +211,45 @@ describe('maskAlpha', () => {
 });
 
 describe('supportsCanvasFilter', () => {
-  it('detects and caches support, restoring filter to none', () => {
+  it('true when the pixel probe sees a blurred neighbour; cached; reset hook re-probes', () => {
     expect(supportsCanvasFilter(ctx)).toBe(true);
-    expect(ctx.filter).toBe('none');
     filterSupported = false;
     expect(supportsCanvasFilter(ctx)).toBe(true); // cached
     resetFilterSupportCache();
     expect(supportsCanvasFilter(ctx)).toBe(false);
+  });
+
+  it('false for an expando filter property: assignment reads back but nothing blurs', () => {
+    filterSupported = false; // probe pixels stay transparent
+    (ctx as unknown as { filter: string }).filter = 'blur(1px)';
+    expect(supportsCanvasFilter(ctx)).toBe(false);
+  });
+
+  it('false when the context prototype has no filter accessor', () => {
+    vi.stubGlobal('CanvasRenderingContext2D', class {});
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'fill', { value: 1 });
+    // fresh class: no 'filter'
+    resetFilterSupportCache();
+    expect(supportsCanvasFilter(ctx)).toBe(false);
+    expect(calls.length).toBe(0);
+  });
+
+  it('false when the probe throws', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
+      throw new Error('x');
+    });
+    expect(supportsCanvasFilter(ctx)).toBe(false);
+  });
+});
+
+describe('outward rounding', () => {
+  it('display draw rect and grey fill are integers rounded outward at a fractional scale', () => {
+    const r = region({ box: [101, 101, 64, 47] }); // scale 0.5 -> 60.5, 70.5, 31.5 x 23.5
+    run([r]);
+    const final = calls.find((c) => c.canvas === 'main' && c.fn === 'drawImage')!;
+    expect(final.args.slice(5)).toEqual([60, 70, 33, 24]); // x 60.5..92.5 -> 60..93
+    run([r], null, notReady);
+    const fill = calls.filter((c) => c.fn === 'fillRect').pop()!;
+    expect(fill.args).toEqual(final.args.slice(5));
   });
 });

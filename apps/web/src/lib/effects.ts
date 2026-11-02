@@ -16,19 +16,37 @@ const GREY = '#6b6f7a';
 
 let filterSupport: boolean | null = null;
 
-/** Whether `ctx.filter = 'blur(..)'` takes effect (not in every browser). Probed once, then cached. */
-export function supportsCanvasFilter(ctx: CanvasRenderingContext2D): boolean {
+/**
+ * Whether canvas `filter` really blurs. Assigning `ctx.filter` and reading it back is NOT proof:
+ * where the context has no accessor the assignment just creates a plain property. So require the
+ * accessor on the prototype AND a one-time pixel probe: draw one opaque pixel through a blur and
+ * see a neighbouring pixel become non-transparent. Any failure means false (blur is then skipped,
+ * and the opaque mosaic underlay stays: the raw frame is never drawn for blur). Cached.
+ */
+export function supportsCanvasFilter(_ctx?: CanvasRenderingContext2D): boolean {
   if (filterSupport === null) {
     try {
-      ctx.filter = 'blur(1px)';
-      filterSupport = ctx.filter === 'blur(1px)';
+      if (typeof CanvasRenderingContext2D === 'undefined' || !('filter' in CanvasRenderingContext2D.prototype)) {
+        filterSupport = false;
+      } else {
+        const src = document.createElement('canvas');
+        const dst = document.createElement('canvas');
+        src.width = src.height = dst.width = dst.height = 5;
+        const sctx = src.getContext('2d');
+        const dctx = dst.getContext('2d');
+        if (!sctx || !dctx) {
+          filterSupport = false;
+        } else {
+          sctx.fillStyle = '#000';
+          sctx.fillRect(2, 2, 1, 1);
+          dctx.filter = 'blur(1px)';
+          dctx.drawImage(src, 0, 0);
+          dctx.filter = 'none';
+          filterSupport = dctx.getImageData(1, 2, 1, 1).data[3] > 0;
+        }
+      }
     } catch {
       filterSupport = false;
-    }
-    try {
-      ctx.filter = 'none';
-    } catch {
-      /* nothing to restore */
     }
   }
   return filterSupport;
@@ -76,6 +94,14 @@ function mosaicInto(
   octx.fillRect(0, 0, cols, rows);
   octx.imageSmoothingEnabled = true;
   octx.drawImage(src.image, x * vx, y * vy, cols * block * vx, rows * block * vy, 0, 0, cols, rows);
+}
+
+/** Display box of a region rounded OUTWARD to whole pixels: no partially transparent outer pixel. */
+function outward(r: Region, rect: Rect, srcW: number, srcH: number): [number, number, number, number] {
+  const [dx, dy, dw, dh] = toDisplay(r.box, srcW, srcH, rect.w, rect.h);
+  const x0 = Math.floor(rect.x + dx);
+  const y0 = Math.floor(rect.y + dy);
+  return [x0, y0, Math.ceil(rect.x + dx + dw) - x0, Math.ceil(rect.y + dy + dh) - y0];
 }
 
 function gridOf(w: number, h: number, block: number) {
@@ -196,14 +222,14 @@ function drawRegion(
   }
 
   // (4) to the display, nearest neighbour, never outside the content rect
-  const [dx, dy, dw, dh] = toDisplay([x, y, w, h], srcW, srcH, rect.w, rect.h);
+  const [ox, oy, ow, oh] = outward(r, rect, srcW, srcH);
   ctx.save();
   try {
     ctx.beginPath();
     ctx.rect(rect.x, rect.y, rect.w, rect.h);
     ctx.clip();
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(off, 0, 0, w, h, rect.x + dx, rect.y + dy, dw, dh);
+    ctx.drawImage(off, 0, 0, w, h, ox, oy, ow, oh);
   } finally {
     ctx.restore();
   }
@@ -225,9 +251,9 @@ export function drawFrameEffects(
   srcH: number,
 ): void {
   const grey = (r: Region) => {
-    const [dx, dy, dw, dh] = toDisplay(r.box, srcW, srcH, rect.w, rect.h);
+    const [ox, oy, ow, oh] = outward(r, rect, srcW, srcH);
     ctx.fillStyle = GREY;
-    ctx.fillRect(rect.x + dx, rect.y + dy, dw, dh);
+    ctx.fillRect(ox, oy, ow, oh);
   };
   const octx = off.getContext('2d');
   if (!octx || !src.ready || !src.width || !src.height) {
