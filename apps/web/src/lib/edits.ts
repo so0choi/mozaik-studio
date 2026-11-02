@@ -1,6 +1,7 @@
+import { normalizeEffects } from './effectParams';
 import { people } from './people';
 import { splitFrames } from './pieces';
-import type { Box, Edits, ManualEdit, Person, TracksDoc } from './types';
+import type { Box, Edits, Effect, ManualEdit, Person, TracksDoc } from './types';
 
 export function emptyEdits(): Edits {
   return { version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [] };
@@ -16,7 +17,29 @@ export function normalizeEdits(raw: Partial<Edits> | null | undefined): Edits {
     splits: e.splits ?? [],
     manual: e.manual ?? [],
     reviewed: e.reviewed ?? [],
+    effects: normalizeEffects(e),
   };
+}
+
+function effectsOf(edits: Edits) {
+  return normalizeEffects(edits);
+}
+
+/** Set (or remove with null) the effect override of a target: track, split piece, group or manual id. */
+export function setTargetEffect(edits: Edits, targetId: string, effect: Effect | null): Edits {
+  const fx = effectsOf(edits);
+  const overrides = { ...fx.overrides };
+  if (effect) overrides[targetId] = effect;
+  else delete overrides[targetId];
+  return { ...edits, effects: { ...fx, overrides } };
+}
+
+export function setDefaultEffect(edits: Edits, effect: Effect): Edits {
+  return { ...edits, effects: { ...effectsOf(edits), default: effect } };
+}
+
+export function setBackgroundEffect(edits: Edits, effect: Effect | null): Edits {
+  return { ...edits, effects: { ...effectsOf(edits), background: effect } };
 }
 
 export function setPersonVisible(edits: Edits, person: Person, visible: boolean): Edits {
@@ -47,8 +70,18 @@ export function groupPersons(doc: TracksDoc, edits: Edits, keys: string[]): Edit
   const ids = new Set(trackIds);
   const visible = edits.visible.filter((v) => !ids.has(v) && !dropKeys.has(v));
   const group = { id, trackIds, ...(keepLabel ? { label: keepLabel } : {}) };
+  // overrides of dissolved groups go away; the first person's override moves to the new group
+  const fx = effectsOf(edits);
+  const overrides = { ...fx.overrides };
+  const moved = overrides[first.key];
+  for (const g of edits.groups) if (dropKeys.has(g.id)) delete overrides[g.id];
+  if (moved) {
+    delete overrides[first.key];
+    overrides[id] = moved;
+  }
   return {
     ...edits,
+    effects: { ...fx, overrides },
     groups: [...edits.groups.filter((g) => !dropKeys.has(g.id)), group],
     visible: allVisible ? [...visible, ...trackIds] : visible,
   };
@@ -129,7 +162,13 @@ export function setManualTrim(edits: Edits, manualId: string, trim: [number, num
 
 /** Soft-delete: the entry stays (so ids are never reused) but is ignored by masks and the worker. */
 export function deleteManual(edits: Edits, manualId: string): Edits {
-  return mapManual(edits, manualId, (m) => ({ ...m, deleted: true }));
+  const next = mapManual(edits, manualId, (m) => ({ ...m, deleted: true }));
+  if (next === edits) return edits;
+  const fx = effectsOf(edits);
+  if (!(manualId in fx.overrides)) return next;
+  const overrides = { ...fx.overrides };
+  delete overrides[manualId];
+  return { ...next, effects: { ...fx, overrides } };
 }
 
 /** Add an anchor to a manual box, replacing any anchor already at the same frame. */

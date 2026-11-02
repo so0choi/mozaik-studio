@@ -17,7 +17,7 @@ import {
 } from '../lib/edits';
 import { enlargeBox } from '../lib/geometry';
 import { emptyHistory, push as pushHistory, redo as redoHistory, undo as undoHistory, type History } from '../lib/history';
-import { maskBoxes } from '../lib/masks';
+import { maskRegions, regionBoxes } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
 import { formatDuration } from '../lib/frames';
@@ -218,10 +218,12 @@ export function Studio() {
   const peopleList = useMemo(() => (tracks ? buildPeople(tracks, edits) : []), [tracks, edits]);
   const pieceList = useMemo(() => (tracks ? pieces(tracks, edits) : []), [tracks, edits]);
   const pieceById = useMemo(() => new Map(pieceList.map((p) => [p.id, p])), [pieceList]);
-  const masks = useMemo(
-    () => (tracks ? maskBoxes(tracks, edits, Object.values(manualDocs)) : new Map()),
+  const regions = useMemo(
+    () => (tracks ? maskRegions(tracks, edits, Object.values(manualDocs)) : new Map()),
     [tracks, edits, manualDocs],
   );
+  // temporary: rect mosaic drawing from regions until region drawing lands
+  const masks = useMemo(() => regionBoxes(regions), [regions]);
   const reviewed = useMemo(() => new Set(edits.reviewed), [edits.reviewed]);
   // only items that can still expose a face given the current visibility edits (same rule as the API)
   const unresolved = useMemo(() => requiredItems(reviewItems, edits), [reviewItems, edits]);
