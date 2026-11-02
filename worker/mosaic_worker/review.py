@@ -75,6 +75,13 @@ def _trailing_gap_explained(track: Track, last_real: int, hold_end: int, fps: in
     return False
 
 
+def _inside(inner, outer) -> bool:
+    return (
+        inner[0] >= outer[0] and inner[1] >= outer[1]
+        and inner[0] + inner[2] <= outer[0] + outer[2] and inner[1] + inner[3] <= outer[1] + outer[3]
+    )
+
+
 def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: int | None = None, cuts=frozenset()) -> dict:
     """Without frame_size/frame_count/cuts every held run is reported (old behaviour)."""
     raw: list[dict] = []  # {type, trackIds, start, end, box}
@@ -84,6 +91,11 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
         raw.append({"type": kind, "trackIds": ids, "start": a, "end": b, "box": _union(boxes_at(mid))})
 
     by_id = {t.id: t for t in tracks}
+    first_real: dict[int, list[Track]] = {}
+    for t in tracks:
+        r = [f for f in t.scores if f in t.frames and f not in t.held]
+        if r:
+            first_real.setdefault(min(r), []).append(t)
     for t in tracks:
         for a, b in _low_confidence(t):
             add("low_confidence", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]])
@@ -93,6 +105,17 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
             trailing = last_real is not None and a > last_real
             if trailing and _trailing_gap_explained(t, last_real, b, fps, frame_size, frame_count, cuts):
                 continue
+            # The hold box keeps masking until the face is found again inside it, so nothing was exposed.
+            if trailing:
+                if any(
+                    u is not t and _inside(u.frames[f], t.frames[min(f, b)])
+                    for f in range(a, b + 2) for u in first_real.get(f, ())
+                ):
+                    continue
+            elif last_real is not None:
+                n = min(f for f in real if f > b)
+                if _inside(t.frames[n], t.frames[b]):
+                    continue
             add("gap", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]])
 
     per_frame: dict[int, list[tuple[str, tuple]]] = {}

@@ -11,6 +11,21 @@ def mk(tid, frames, score=0.9, box=(100, 100, 50, 50), held=()):
     )
 
 
+def refound_elsewhere(t, dx=60):
+    """Move the face after every held run by dx, so it is re-found outside the hold box."""
+    runs = 0
+    for f in sorted(t.frames):
+        if f in t.held:
+            if f - 1 not in t.held:
+                runs += 1
+            x, y, w, h = t.frames[f]
+            t.frames[f] = (x + dx * (runs - 1), y, w, h)
+        else:
+            x, y, w, h = t.frames[f]
+            t.frames[f] = (x + dx * runs, y, w, h)
+    return t
+
+
 def test_low_confidence_run():
     t = mk("t1", range(0, 20), score=0.5)
     items = build_review([t], 30)["items"]
@@ -25,7 +40,7 @@ def test_high_confidence_and_short_low_run_not_flagged():
 
 
 def test_gap_from_held_frames():
-    t = mk("t1", range(0, 30), held=range(10, 15))
+    t = refound_elsewhere(mk("t1", range(0, 30), held=range(10, 15)))
     items = build_review([t], 30)["items"]
     assert len(items) == 1 and items[0]["type"] == "gap"
     assert (items[0]["startFrame"], items[0]["endFrame"]) == (10, 14)
@@ -50,17 +65,17 @@ def test_no_crossing_when_iou_small():
 
 def test_adjacent_items_within_one_second_merge():
     # two held runs 0.8s (24 frames) apart on the same track -> one gap item
-    t = mk("t1", range(0, 100), held=list(range(10, 14)) + list(range(38, 42)))
+    t = refound_elsewhere(mk("t1", range(0, 100), held=list(range(10, 14)) + list(range(38, 42))))
     items = build_review([t], 30)["items"]
     assert len(items) == 1
     assert (items[0]["startFrame"], items[0]["endFrame"]) == (10, 41)
     # more than 1s apart stays separate
-    t = mk("t1", range(0, 100), held=list(range(10, 14)) + list(range(50, 54)))
+    t = refound_elsewhere(mk("t1", range(0, 100), held=list(range(10, 14)) + list(range(50, 54))))
     assert len(build_review([t], 30)["items"]) == 2
 
 
 def test_ids_and_box_shape():
-    t = mk("t1", range(0, 30), held=range(10, 15))
+    t = refound_elsewhere(mk("t1", range(0, 30), held=range(10, 15)))
     it = build_review([t], 30)["items"][0]
     assert it["id"] == "r1" and len(it["box"]) == 4 and all(isinstance(v, int) for v in it["box"])
 
@@ -105,7 +120,7 @@ def test_trailing_gap_at_video_end_is_dropped():
 
 
 def test_bridged_gap_is_kept_even_near_edge_or_cut():
-    t = mk("t1", range(0, 30), box=(2, 150, 50, 50), held=range(10, 15))
+    t = refound_elsewhere(mk("t1", range(0, 30), box=(2, 150, 50, 50), held=range(10, 15)))
     items = build_review([t], 30, frame_size=SIZE, frame_count=300, cuts={11})["items"]
     assert len(gaps(items)) == 1
 
@@ -135,3 +150,61 @@ def test_held_box_with_ungrown_size_overlapping_still_crosses():
     b = mk("t2", range(10, 14), box=(130, 100, 50, 50))
     types = [i["type"] for i in build_review([a, b], 30, frame_size=(1000, 1000), frame_count=1000)["items"]]
     assert "crossing" in types
+
+
+# --- gaps that cannot expose a face: the hold box keeps masking until the face is found again inside it ---
+def two_phase(hold_box, found_box, found_from=15, hold=range(10, 15), end=30):
+    """Detected 0..9, held 10..14 (box grown to hold_box), re-found at found_from with found_box."""
+    frames = {f: (100, 100, 50, 50) for f in range(0, 10)}
+    frames.update({f: hold_box for f in hold})
+    frames.update({f: found_box for f in range(found_from, end)})
+    scores = {f: 0.9 for f in frames if f not in hold}
+    return Track("t1", frames, scores, set(hold))
+
+
+HOLD = (90, 90, 80, 80)
+
+
+def test_mid_gap_refound_inside_hold_box_is_not_reviewed():
+    t = two_phase(HOLD, (105, 105, 50, 50))
+    assert gaps(build_review([t], 30, frame_size=SIZE, frame_count=300)["items"]) == []
+
+
+def test_mid_gap_refound_outside_hold_box_is_reviewed():
+    t = two_phase(HOLD, (140, 105, 50, 50))  # right edge 190 > 170
+    assert len(gaps(build_review([t], 30, frame_size=SIZE, frame_count=300)["items"])) == 1
+
+
+def other_track(start, box):
+    return mk("t2", range(start, start + 20), box=box)
+
+
+def test_trailing_gap_handed_off_inside_hold_box_is_not_reviewed():
+    t = mk("t1", range(0, 15), box=(100, 100, 50, 50), held=range(10, 15))
+    t.frames.update({f: HOLD for f in range(10, 15)})
+    u = other_track(12, (105, 105, 50, 50))
+    items = build_review([t, u], 30, frame_size=SIZE, frame_count=300, cuts=set())["items"]
+    assert gaps(items) == []
+
+
+def test_trailing_gap_handoff_outside_hold_box_is_reviewed():
+    t = mk("t1", range(0, 15), box=(100, 100, 50, 50), held=range(10, 15))
+    t.frames.update({f: HOLD for f in range(10, 15)})
+    u = other_track(12, (300, 105, 50, 50))
+    items = build_review([t, u], 30, frame_size=SIZE, frame_count=300, cuts=set())["items"]
+    assert len(gaps(items)) == 1
+
+
+def test_trailing_gap_handoff_after_hold_is_reviewed():
+    t = mk("t1", range(0, 15), box=(100, 100, 50, 50), held=range(10, 15))
+    t.frames.update({f: HOLD for f in range(10, 15)})
+    u = other_track(16, (105, 105, 50, 50))  # b + 2
+    items = build_review([t, u], 30, frame_size=SIZE, frame_count=300, cuts=set())["items"]
+    assert len(gaps(items)) == 1
+
+
+def test_low_confidence_and_crossing_unchanged():
+    a = mk("t1", range(0, 20), score=0.5, box=(100, 100, 100, 100))
+    b = mk("t2", range(0, 20), box=(170, 100, 100, 100))
+    types = sorted(i["type"] for i in build_review([a, b], 30, frame_size=SIZE, frame_count=300)["items"])
+    assert types == ["crossing", "low_confidence"]

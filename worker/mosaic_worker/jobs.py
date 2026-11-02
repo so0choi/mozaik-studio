@@ -34,7 +34,7 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
     tracker = Tracker(meta.fps, frame_size=(meta.width, meta.height))
     thumbs = ThumbCollector(meta.fps)
     verifier = TrackVerifier()
-    scene = SceneCuts()
+    scene = SceneCuts(meta.fps)
     last_pct = -1
     try:
         idx = 0
@@ -54,6 +54,7 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
                     progress("analyzing", pct)
     finally:
         cap.release()
+    scene.finish()
     tracks, groups = link_fragments(tracker.finish(), meta.fps, scene.cuts)
     # Only a hint for the reviewer: suspect tracks stay masked like every other track.
     part_suspects = {p for parts in groups.values() for p in parts if not verifier.keep(p)}
