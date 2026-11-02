@@ -1,12 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Timeline } from './Timeline';
+import { Timeline, rulerTicks } from './Timeline';
 import type { ReviewItem } from '../lib/types';
 
 const item = (id: string, startFrame: number): ReviewItem =>
   ({ id, type: 'gap', trackIds: ['t1'], startFrame, endFrame: startFrame + 5, box: [0, 0, 1, 1] }) as ReviewItem;
 
-function renderTl(onSeek = vi.fn(), onSelectItem = vi.fn()) {
+function renderTl(onSeek = vi.fn(), onSelectItem = vi.fn(), zoom?: number) {
   render(
     <Timeline
       person={null}
@@ -16,7 +16,7 @@ function renderTl(onSeek = vi.fn(), onSelectItem = vi.fn()) {
       unresolved={[item('a', 50)]}
       resolved={[]}
       activeId={null}
-      thumbSrc={(p) => p}
+      zoom={zoom}
       onSeek={onSeek}
       onSelectItem={onSelectItem}
     />,
@@ -87,5 +87,34 @@ describe('Timeline scrubbing', () => {
     const { onSeek } = renderTl();
     fireEvent.keyDown(screen.getByRole('slider'), { key: 'ArrowRight' });
     expect(onSeek).toHaveBeenLastCalledWith(100); // min(total, 0+150)
+  });
+});
+
+describe('Timeline zoom', () => {
+  it('content width is zoom * 100% (default 100%)', () => {
+    renderTl();
+    expect(screen.getByTestId('tl-content').style.width).toBe('100%');
+  });
+  it('zoom 4 -> 400% and scrubbing still maps over the whole content', () => {
+    const { onSeek } = renderTl(vi.fn(), vi.fn(), 4);
+    expect(screen.getByTestId('tl-content').style.width).toBe('400%');
+    fireEvent.pointerDown(screen.getByRole('slider').parentElement!, { clientX: 500, pointerId: 1 });
+    expect(onSeek).toHaveBeenLastCalledWith(50);
+  });
+  it('without a measurable width the ruler falls back to 6 labels; trim handles are decorative', () => {
+    renderTl();
+    expect(screen.getByTestId('tl-content').querySelectorAll('.ruler span').length).toBe(6);
+    expect(document.querySelectorAll('.trim[aria-hidden="true"]').length).toBe(2);
+  });
+});
+
+describe('rulerTicks', () => {
+  it('spaces labels at least 70px apart', () => {
+    const t = rulerTicks(600, 1000); // 1.67 px/s -> step 60s
+    expect(t[1].t - t[0].t).toBe(60);
+    for (let i = 1; i < t.length; i++) expect((t[i].at - t[i - 1].at) * 1000).toBeGreaterThanOrEqual(70);
+  });
+  it('falls back to 6 even labels for width 0', () => {
+    expect(rulerTicks(10, 0).length).toBe(6);
   });
 });

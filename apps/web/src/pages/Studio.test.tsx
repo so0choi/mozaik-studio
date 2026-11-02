@@ -62,7 +62,7 @@ describe('Studio people list', () => {
     expect((puts(calls)[0].body as Edits).visible).toEqual(['t1']);
     const row = await card('t1');
     expect(within(row).getByRole('switch', { name: '인물 1 보임 전환' })).toHaveAttribute('aria-checked', 'true');
-    expect(within(row).getByText('보임')).toBeInTheDocument();
+    expect(within(row).getByText('원본')).toBeInTheDocument();
   });
 
   it('groups two selected rows into one group', async () => {
@@ -798,7 +798,7 @@ describe('Studio suspect tracks', () => {
     setup({ tracks: suspectDoc });
     await card('t2');
     expect(screen.queryByTestId('card-t1')).toBeNull();
-    const toggleBtn = screen.getByRole('button', { name: /얼굴 아닐 수 있음 \(2\)/ });
+    const toggleBtn = screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ });
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText(/음식, 무늬 등 얼굴이 아닌 것을/)).toBeNull();
     await userEvent.click(toggleBtn);
@@ -832,5 +832,101 @@ describe('Studio suspect tracks', () => {
     await sleep(800);
     expect(puts(calls).length).toBe(0);
     expect(screen.getByRole('button', { name: '확인 후 모두 보임' })).toBeInTheDocument();
+  });
+});
+
+describe('Studio undo / redo', () => {
+  const undoBtn = () => screen.getByRole('button', { name: '되돌리기' });
+  const redoBtn = () => screen.getByRole('button', { name: '다시하기' });
+  const switchOf = async (key: string, label: string) =>
+    within(await card(key)).getByRole('switch', { name: `${label} 보임 전환` });
+
+  it('starts disabled; 되돌리기 restores a toggled person and saves it; 다시하기 reapplies', async () => {
+    const calls = setup();
+    await card('t1');
+    expect(undoBtn()).toBeDisabled();
+    expect(redoBtn()).toBeDisabled();
+    await toggle('t1', '인물 1');
+    expect(await switchOf('t1', '인물 1')).toHaveAttribute('aria-checked', 'true');
+    expect(undoBtn()).toBeEnabled();
+    await userEvent.click(undoBtn());
+    expect(await switchOf('t1', '인물 1')).toHaveAttribute('aria-checked', 'false');
+    expect(undoBtn()).toBeDisabled();
+    expect(redoBtn()).toBeEnabled();
+    await userEvent.click(redoBtn());
+    expect(await switchOf('t1', '인물 1')).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(undoBtn());
+    await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
+    expect((puts(calls)[0].body as Edits).visible).toEqual([]);
+  });
+
+  it('Ctrl+Z undoes and Ctrl+Shift+Z redoes; ignored while typing', async () => {
+    setup();
+    await card('t1');
+    await toggle('t1', '인물 1');
+    const input = screen.getByRole('searchbox', { name: '인물 검색' });
+    await userEvent.click(input);
+    await userEvent.keyboard('{Control>}z{/Control}');
+    expect(await switchOf('t1', '인물 1')).toHaveAttribute('aria-checked', 'true'); // typing: not undone
+    input.blur();
+    await userEvent.keyboard('{Control>}z{/Control}');
+    expect(await switchOf('t1', '인물 1')).toHaveAttribute('aria-checked', 'false');
+    await userEvent.keyboard('{Control>}{Shift>}z{/Shift}{/Control}');
+    expect(await switchOf('t1', '인물 1')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('loading the saved edits is not an undo step', async () => {
+    setup({ edits: { ...emptyEdits, visible: ['t1'] } });
+    await card('t1');
+    expect(undoBtn()).toBeDisabled();
+  });
+
+  it('undoing a manual box creation keeps the entry as deleted:true in the PUT', async () => {
+    const calls = setup({
+      extra: (c) => (c.path === '/api/jobs/j1/manual' && c.method === 'POST' ? { status: 202, body: {} } : undefined),
+    });
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: /문제 있음/ }));
+    await userEvent.click(screen.getByRole('button', { name: /얼굴이 보여요/ }));
+    await userEvent.click(screen.getByRole('button', { name: '이 영역으로 추적' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path.endsWith('/manual'))).toBe(true));
+    await userEvent.click(undoBtn());
+    await waitFor(() => {
+      const last = puts(calls).at(-1)!.body as Edits;
+      expect(last.manual).toEqual([expect.objectContaining({ id: 'm1', deleted: true })]);
+    });
+  });
+
+  it('announces a person that undo turns back to 보임', async () => {
+    setup({ edits: { ...emptyEdits, visible: ['t1'] } });
+    await card('t1');
+    await toggle('t1', '인물 1'); // 가림
+    await userEvent.click(undoBtn());
+    expect(document.querySelector('.sr[aria-live]')).toHaveTextContent('인물 1 보임으로 되돌림');
+  });
+});
+
+describe('Studio right column', () => {
+  it('focusing a person shows the detail panel; 원본 / 모자이크 / 기본값 change visibility; × clears focus', async () => {
+    setup();
+    await userEvent.click(await card('t2'));
+    const detail = screen.getByTestId('target-detail');
+    expect(within(detail).getByText('이 대상은 모자이크로 가려집니다.')).toBeInTheDocument();
+    await userEvent.click(within(detail).getByRole('button', { name: '원본' }));
+    expect(within(detail).getByText(/이 대상은 원본으로 보입니다/)).toBeInTheDocument();
+    expect(within(await card('t2')).getByRole('switch', { name: '인물 2 보임 전환' })).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(within(detail).getByRole('button', { name: '기본값' }));
+    expect(within(await card('t2')).getByRole('switch', { name: '인물 2 보임 전환' })).toHaveAttribute('aria-checked', 'false');
+    await userEvent.click(within(detail).getByRole('button', { name: '선택 해제' }));
+    expect(screen.queryByTestId('target-detail')).toBeNull();
+  });
+
+  it('left panel: auto blur switch is on and disabled; 사각형 is the box tool', async () => {
+    setup();
+    await card('t1');
+    const sw = screen.getByRole('switch', { name: '자동 블러 켜짐' });
+    expect(sw).toBeDisabled();
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('button', { name: '박스 그리기' })).toHaveTextContent('사각형');
   });
 });

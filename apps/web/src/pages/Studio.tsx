@@ -16,13 +16,19 @@ import {
   splitTrack,
 } from '../lib/edits';
 import { enlargeBox } from '../lib/geometry';
+import { emptyHistory, push as pushHistory, redo as redoHistory, undo as undoHistory, type History } from '../lib/history';
 import { maskBoxes } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
+import { formatDuration } from '../lib/frames';
 import type { Box, Edits, Job, ManualDoc, ManualState, ReviewItem, TracksDoc } from '../lib/types';
 import { BoxTool } from '../studio/BoxTool';
 import { ManualBoxCard, manualRange } from '../studio/ManualBoxCard';
-import { PeopleList } from '../studio/PeopleList';
+import { LeftPanel } from '../studio/LeftPanel';
+import { PlayerControls } from '../studio/PlayerControls';
+import { TargetDetail } from '../studio/TargetDetail';
+import { TargetList } from '../studio/TargetList';
+import { VideoInfo } from '../studio/VideoInfo';
 import { PlayerOverlay, type Highlight } from '../studio/PlayerOverlay';
 import { requiredItems } from '../lib/reviewRequired';
 import { ReviewCard, ReviewUpcoming, optionCount, type ReviewStage } from '../studio/ReviewCard';
@@ -71,6 +77,7 @@ export function Studio() {
   const [renderPhase, setRenderPhase] = useState<'idle' | 'rendering'>('idle');
   const [renderError, setRenderError] = useState<string | null>(null);
   const [outputReady, setOutputReady] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   // ---- edits: source of truth is the ref, saved with a 500ms debounce ----
   const editsRef = useRef<Edits>(edits);
@@ -93,10 +100,9 @@ export function Studio() {
     }
   }, [id]);
 
-  const updateEdits = useCallback(
-    (fn: (e: Edits) => Edits) => {
-      const next = fn(editsRef.current);
-      if (next === editsRef.current) return;
+  // shared by edits and undo/redo: ref -> state -> debounced save
+  const commit = useCallback(
+    (next: Edits) => {
       editsRef.current = next;
       dirty.current = true;
       setEdits(next);
@@ -105,6 +111,25 @@ export function Studio() {
       timer.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
     },
     [flush],
+  );
+
+  // undo/redo history lives in a ref (starts empty after the initial load); the counter re-renders the buttons
+  const historyRef = useRef<History>(emptyHistory());
+  const [, setHistoryVersion] = useState(0);
+
+  /** `record=false` for edits the user did not make (background tracking finishing): not an undo step. */
+  const updateEdits = useCallback(
+    (fn: (e: Edits) => Edits, record = true) => {
+      const prev = editsRef.current;
+      const next = fn(prev);
+      if (next === prev) return;
+      if (record) {
+        historyRef.current = pushHistory(historyRef.current, prev);
+        setHistoryVersion((v) => v + 1);
+      }
+      commit(next);
+    },
+    [commit],
   );
 
   useEffect(
@@ -340,6 +365,29 @@ export function Studio() {
   );
   const focusPerson = useCallback((key: string) => setCurrentKey(key), []);
   const thumbSrc = useCallback((path: string) => thumbUrl(id, path), [id]);
+  const clearFocus = useCallback(() => setCurrentKey(null), []);
+
+  // ---- undo / redo ----
+  const applyHistory = useCallback(
+    (step: typeof undoHistory) => {
+      const before = editsRef.current;
+      const r = step(historyRef.current, before);
+      if (!r) return;
+      historyRef.current = r.history;
+      setHistoryVersion((v) => v + 1);
+      commit(r.edits);
+      if (tracks) {
+        const prior = new Map(buildPeople(tracks, before).map((p) => [p.key, p.visible]));
+        const shown = buildPeople(tracks, r.edits).filter((p) => p.visible && !prior.get(p.key));
+        if (shown.length) setNotice(`${shown.map((p) => p.label).join(', ')} 보임으로 되돌림`);
+      }
+    },
+    [commit, tracks],
+  );
+  const undoEdits = useCallback(() => applyHistory(undoHistory), [applyHistory]);
+  const redoEdits = useCallback(() => applyHistory(redoHistory), [applyHistory]);
+  const canUndo = historyRef.current.past.length > 0;
+  const canRedo = historyRef.current.future.length > 0;
 
   // ---- split ----
   const splitInfo = useMemo(() => {
@@ -562,7 +610,7 @@ export function Studio() {
           if (doc) setManualDocs((d) => ({ ...d, [mid]: doc }));
           setManualState((s) => (s[mid] === 'tracking' ? { ...s, [mid]: r.state } : s));
           const rid = Object.entries(reviewManualRef.current).find(([, m]) => m === mid)?.[0];
-          if (rid) updateEdits((e) => markReviewed(e, rid));
+          if (rid) updateEdits((e) => markReviewed(e, rid), false);
         } catch {
           /* keep polling */
         }
@@ -606,6 +654,20 @@ export function Studio() {
   // ---- keyboard (one listener; always calls the latest handler) ----
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !isTyping(e.target) && !boxMode) {
+      const k = e.key.toLowerCase();
+      if (k === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redoEdits();
+        else undoEdits();
+        return;
+      }
+      if (k === 'y' && e.ctrlKey) {
+        e.preventDefault();
+        redoEdits();
+        return;
+      }
+    }
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     const target = e.target as HTMLElement | null;
     if (boxMode) {
@@ -757,20 +819,107 @@ export function Studio() {
         </div>
       </Header>
       <main id="main" className="studio">
-        <PeopleList
-          people={peopleList}
-          selected={selected}
-          currentKey={currentKey}
-          thumbSrc={thumbSrc}
-          onToggleVisible={toggleVisible}
-          onToggleSelect={toggleSelect}
-          onFocusPerson={focusPerson}
-          onMerge={merge}
-          onCancelSelect={clearSelect}
-          onRename={rename}
-          onShowSuspects={showSuspects}
+        <LeftPanel
+          reviewCount={unresolved.length}
+          boxActive={!!boxMode}
+          onToggleBox={toggleBox}
+          review={
+            <>
+              {manualOpenEdit ? (
+                <p className="rv-paused">수동 박스를 편집 중입니다. 닫으면 검수를 이어갑니다.</p>
+              ) : (
+                <ReviewCard
+                  item={activeItem}
+                  position={Math.max(0, activeIndex) + 1}
+                  total={Math.max(unresolved.length, 1)}
+                  stage={stage}
+                  fps={fps}
+                  who={activeItem ? whoOf(activeItem) : ''}
+                  manualState={activeItem ? manualState[reviewManual[activeItem.id]] : undefined}
+                  splitPeople={activeItem ? peopleOfTracks(activeItem.trackIds) : []}
+                  onOk={() => activeItem && resolveItem(activeItem.id)}
+                  onProblem={() => setStage('problem')}
+                  onBack={() => setStage('ask')}
+                  onOption={chooseOption}
+                  onSeek={() => activeItem && seek(activeItem.startFrame)}
+                  onPrev={() => stepItem(-1)}
+                  onNext={() => stepItem(1)}
+                  onTogglePerson={toggleVisible}
+                  onSplitDone={() => activeItem && resolveItem(activeItem.id)}
+                />
+              )}
+              <ReviewUpcoming
+                items={unresolved.filter((i) => i.id !== activeItem?.id)}
+                total={unresolved.length}
+                done={resolved}
+                hiddenCount={hiddenCount}
+                fps={fps}
+                whoOf={whoOf}
+                onSelect={selectItem}
+              />
+            </>
+          }
         />
         <section className="center" aria-label="미리보기">
+          <div className="toolbar">
+            <div className="tb-chips">
+              {current ? (
+                <span className="tchip sel">
+                  <img src={thumbSrc(current.thumb)} alt="" />
+                  <b>{current.label}</b>
+                  <span className="mini">선택됨</span>
+                </span>
+              ) : (
+                <span className="tchip">대상을 선택하세요</span>
+              )}
+              {current && (
+                <>
+                  <span className="tchip">
+                    적용 구간 {current.segments.length}구간 · 총 {formatDuration(current.appearSec)}
+                  </span>
+                  <span className={`tchip fx${current.visible ? ' v' : ''}`}>{current.visible ? '원본' : '모자이크'}</span>
+                </>
+              )}
+            </div>
+            <div className="tb-acts">
+              <button type="button" className="tbtn" aria-label="되돌리기" title="되돌리기 (Ctrl/⌘+Z)" disabled={!canUndo} onClick={undoEdits}>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 3L2.5 6.5 6 10M3 6.5h6a4 4 0 010 8H7" />
+                </svg>
+              </button>
+              <button type="button" className="tbtn" aria-label="다시하기" title="다시하기 (Ctrl/⌘+Shift+Z)" disabled={!canRedo} onClick={redoEdits}>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10 3l3.5 3.5L10 10M13 6.5H7a4 4 0 000 8h2" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="btn-primary sm"
+                disabled={!splitInfo.ok}
+                title={splitInfo.reason || undefined}
+                onClick={doSplit}
+              >
+                여기서 분할
+              </button>
+              <div className="zoom">
+                <button type="button" className="tbtn" aria-label="축소" disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z - 1))}>
+                  −
+                </button>
+                <input
+                  type="range"
+                  aria-label="타임라인 확대"
+                  min={1}
+                  max={8}
+                  step={1}
+                  value={zoom}
+                  onChange={(e) => setZoom(Number(e.target.value))}
+                />
+                <button type="button" className="tbtn" aria-label="확대" disabled={zoom >= 8} onClick={() => setZoom((z) => Math.min(8, z + 1))}>
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
           <PlayerOverlay
             src={videoUrl(id)}
             videoRef={videoRef}
@@ -783,7 +932,6 @@ export function Studio() {
             highlight={highlight}
             focusBoxes={focusBoxes}
             onFrame={setFrame}
-            onStep={stepFrame}
           >
             {(rect) =>
               boxMode && (
@@ -798,58 +946,15 @@ export function Studio() {
               )
             }
           </PlayerOverlay>
-          <div className="tools">
-            <button
-              type="button"
-              className="btn-ghost"
-              aria-label="박스 그리기"
-              aria-keyshortcuts="B"
-              aria-pressed={!!boxMode}
-              onClick={toggleBox}
-            >
-              박스 그리기 <kbd>B</kbd>
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={!splitInfo.ok}
-              title={splitInfo.reason || undefined}
-              onClick={doSplit}
-            >
-              여기서 분할
-            </button>
-            <div className="legend" aria-hidden="true">
-              <span>
-                <i /> 확인 필요
-              </span>
-              <span>
-                <i className="g" /> 확인 완료
-              </span>
-            </div>
-          </div>
-          {manualList.length > 0 && (
-            <div className="mbrow" data-testid="manual-chip">
-              <span className="mbl">수동 박스</span>
-              {manualList.map((m) => (
-                <button
-                  type="button"
-                  key={m.id}
-                  className={`mbchip${manualOpen === m.id ? ' on' : ''}`}
-                  aria-pressed={manualOpen === m.id}
-                  onClick={() => openManual(m.id)}
-                >
-                  수동 박스 {m.id}
-                  {manualState[m.id] === 'tracking' && (
-                    <>
-                      {' · 추적 중 '}
-                      <i className="spin" />
-                    </>
-                  )}
-                  {manualState[m.id] === 'failed' && ' · 실패'}
-                </button>
-              ))}
-            </div>
-          )}
+          <PlayerControls
+            videoRef={videoRef}
+            fps={fps}
+            frame={frame}
+            frameCount={tracks.frameCount}
+            onTogglePlay={togglePlay}
+            onSeek={seek}
+            onStep={stepFrame}
+          />
           <Timeline
             person={current}
             fps={fps}
@@ -858,12 +963,41 @@ export function Studio() {
             unresolved={unresolved}
             resolved={resolved}
             activeId={activeItem?.id ?? null}
-            thumbSrc={thumbSrc}
+            zoom={zoom}
+            videoSrc={videoUrl(id)}
+            masks={masks}
+            srcW={tracks.width}
+            srcH={tracks.height}
             onSeek={seek}
             onSelectItem={selectItem}
           />
+          <div className="legend" aria-hidden="true">
+            <span>
+              <i /> 확인 필요
+            </span>
+            <span>
+              <i className="g" /> 확인 완료
+            </span>
+          </div>
         </section>
-        <aside className="rightcol" aria-label="검수">
+        <aside className="rightcol" aria-label="블러 대상">
+          <TargetList
+            people={peopleList}
+            selected={selected}
+            currentKey={currentKey}
+            thumbSrc={thumbSrc}
+            onToggleVisible={toggleVisible}
+            onToggleSelect={toggleSelect}
+            onFocusPerson={focusPerson}
+            onMerge={merge}
+            onCancelSelect={clearSelect}
+            onRename={rename}
+            onShowSuspects={showSuspects}
+            manualList={manualList}
+            manualState={manualState}
+            manualOpen={manualOpen}
+            onOpenManual={openManual}
+          />
           {manualOpenEdit ? (
             <ManualBoxCard
               manual={manualOpenEdit}
@@ -879,45 +1013,15 @@ export function Studio() {
               onClose={() => setManualOpen(null)}
             />
           ) : (
-            <ReviewCard
-              item={activeItem}
-              position={Math.max(0, activeIndex) + 1}
-              total={Math.max(unresolved.length, 1)}
-              stage={stage}
-              fps={fps}
-              who={activeItem ? whoOf(activeItem) : ''}
-              manualState={activeItem ? manualState[reviewManual[activeItem.id]] : undefined}
-              splitPeople={activeItem ? peopleOfTracks(activeItem.trackIds) : []}
-              onOk={() => activeItem && resolveItem(activeItem.id)}
-              onProblem={() => setStage('problem')}
-              onBack={() => setStage('ask')}
-              onOption={chooseOption}
-              onSeek={() => activeItem && seek(activeItem.startFrame)}
-              onPrev={() => stepItem(-1)}
-              onNext={() => stepItem(1)}
-              onTogglePerson={toggleVisible}
-              onSplitDone={() => activeItem && resolveItem(activeItem.id)}
-            />
+            current && <TargetDetail person={current} onSetVisible={toggleVisible} onClose={clearFocus} />
           )}
-          <ReviewUpcoming
-            items={unresolved.filter((i) => i.id !== activeItem?.id)}
-            total={unresolved.length}
-            done={resolved}
-            hiddenCount={hiddenCount}
+          <VideoInfo
+            filename={job.filename}
+            width={tracks.width}
+            height={tracks.height}
+            frameCount={tracks.frameCount}
             fps={fps}
-            whoOf={whoOf}
-            onSelect={selectItem}
           />
-          <div className="hints">
-            <span><kbd>Enter</kbd>괜찮음</span>
-            <span><kbd>X</kbd>문제 있음</span>
-            <span><kbd>1–3</kbd>해결 방법</span>
-            <span><kbd>Esc</kbd>뒤로</span>
-            <span><kbd>←</kbd><kbd>→</kbd>이동</span>
-            <span><kbd>B</kbd>박스 그리기</span>
-            <span><kbd>Space</kbd>재생/정지</span>
-            <span><kbd>,</kbd><kbd>.</kbd>1프레임</span>
-          </div>
         </aside>
       </main>
       <div className="sr" aria-live="polite">

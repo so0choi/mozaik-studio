@@ -5,6 +5,7 @@ import { cleanup } from '@testing-library/react';
 // jsdom has no canvas / media playback; stub the bits the player touches.
 HTMLCanvasElement.prototype.getContext = (() => null) as never;
 HTMLMediaElement.prototype.pause = vi.fn();
+HTMLMediaElement.prototype.load = vi.fn();
 HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve());
 
 // jsdom lacks PointerEvent; a MouseEvent subclass keeps clientX/clientY for drag tests.
