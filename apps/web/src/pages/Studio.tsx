@@ -764,8 +764,9 @@ export function Studio() {
       }
       return;
     }
-    // effect controls own their keys (Space/arrows act on the focused button or slider, never on playback)
-    if (target?.closest?.('[data-effect-control]')) return;
+    // effect controls own Space/arrows (they act on the focused button or slider, never on playback);
+    // every other shortcut keeps working
+    if ((e.key === ' ' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && target?.closest?.('[data-effect-control]')) return;
     const onControl = !!target?.closest?.('button, a, [role="switch"], [role="checkbox"], [role="slider"]');
     const itemTracking = !!activeItem && manualState[reviewManual[activeItem.id]] === 'tracking';
     const canAct = !!activeItem && !manualOpenEdit && !itemTracking;

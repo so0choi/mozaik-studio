@@ -1007,4 +1007,15 @@ describe('Studio save-gated render', () => {
     btn.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(false);
   });
+
+  it('Escape with focus on an effect button still goes back from stage 2', async () => {
+    setup();
+    await userEvent.click(await card('t1'));
+    await userEvent.keyboard('x');
+    expect(screen.queryByRole('button', { name: /괜찮음/ })).toBeNull();
+    const btn = within(await screen.findByTestId('target-detail')).getByRole('button', { name: '블러' });
+    btn.focus();
+    btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(await screen.findByRole('button', { name: /괜찮음/ })).toBeInTheDocument();
+  });
 });

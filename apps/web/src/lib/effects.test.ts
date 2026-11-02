@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { drawFrameEffects, maskAlpha, resetFilterSupportCache, supportsCanvasFilter, type PixelSource } from './effects';
+import { dilateBitmap, drawFrameEffects, maskAlpha, previewDilation, resetFilterSupportCache, supportsCanvasFilter, type PixelSource } from './effects';
 import { regionSigma } from './effectParams';
 import { shapeBitmap } from './shapes';
 import type { Effect, Region } from './types';
@@ -180,7 +180,7 @@ describe('regions', () => {
     const r = region({ shape: 'ellipse', box: [100, 100, 41, 31] });
     run([r]);
     expect(putData).toHaveLength(1);
-    const bm = shapeBitmap('ellipse', 41, 31, null);
+    const bm = dilateBitmap(shapeBitmap('ellipse', 41, 31, null), 41, 31, previewDilation(640, 320));
     expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(Array.from(bm, (v) => (v ? 255 : 0)));
     const di = calls.find((c) => c.canvas === 'off' && c.fn === 'drawImage' && c.op === 'destination-in');
     expect(di).toBeDefined();
@@ -192,7 +192,7 @@ describe('regions', () => {
   it('polygon points are made relative to the box origin', () => {
     const pts: [number, number][] = [[110, 105], [150, 105], [130, 140]];
     run([region({ shape: 'polygon', box: [100, 100, 64, 48], points: pts })]);
-    const bm = shapeBitmap('polygon', 64, 48, [[10, 5], [50, 5], [30, 40]]);
+    const bm = dilateBitmap(shapeBitmap('polygon', 64, 48, [[10, 5], [50, 5], [30, 40]]), 64, 48, previewDilation(640, 320));
     expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(Array.from(bm, (v) => (v ? 255 : 0)));
   });
 
@@ -207,6 +207,40 @@ describe('maskAlpha', () => {
   it('writes alpha strictly 0 or 255 and leaves rgb zero', () => {
     const d = maskAlpha(new Uint8Array([1, 0, 0, 1]));
     expect(Array.from(d)).toEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255]);
+  });
+});
+
+describe('dilateBitmap', () => {
+  it('d = 1 is the identity', () => {
+    const bm = new Uint8Array([0, 1, 0, 0, 0, 0]);
+    expect(Array.from(dilateBitmap(bm, 3, 2, 1))).toEqual(Array.from(bm));
+  });
+
+  it('d grows the set by d - 1 pixels (square) and stays inside the box', () => {
+    const bm = new Uint8Array(25);
+    bm[12] = 1; // centre of 5x5
+    expect(Array.from(dilateBitmap(bm, 5, 5, 3)).every((v) => v === 1)).toBe(true);
+    const one = dilateBitmap(bm, 5, 5, 2);
+    expect(one.reduce((x, y) => x + y, 0)).toBe(9);
+    const corner = new Uint8Array(9);
+    corner[0] = 1;
+    expect(Array.from(dilateBitmap(corner, 3, 3, 2))).toEqual([1, 1, 0, 1, 1, 0, 0, 0, 0]);
+  });
+
+  it('previewDilation = ceil(source px per display px), at least 1', () => {
+    expect(previewDilation(1920, 800)).toBe(3);
+    expect(previewDilation(1920, 1920)).toBe(1);
+    expect(previewDilation(640, 1280)).toBe(1);
+  });
+
+  it('a downscaled preview mask is a superset of the render bitmap', () => {
+    const pts: [number, number][] = [[2, 2], [38, 5], [20, 30]];
+    for (const shape of ['ellipse', 'polygon'] as const) {
+      const bm = shapeBitmap(shape, 40, 32, shape === 'polygon' ? pts : null);
+      const dil = dilateBitmap(bm, 40, 32, previewDilation(1920, 800));
+      for (let i = 0; i < bm.length; i++) if (bm[i]) expect(dil[i]).toBe(1);
+      expect(dil.reduce((a, b) => a + b, 0)).toBeGreaterThan(bm.reduce((a, b) => a + b, 0));
+    }
   });
 });
 

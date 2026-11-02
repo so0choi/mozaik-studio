@@ -64,6 +64,38 @@ export function maskAlpha(bitmap: Uint8Array): Uint8ClampedArray {
   return data;
 }
 
+/** Source pixels covered by one display pixel, rounded up (>= 1). */
+export function previewDilation(srcW: number, displayW: number): number {
+  return Math.max(1, Math.ceil(srcW / Math.max(1, displayW)));
+}
+
+/**
+ * Preview-only: square dilation of a 0/1 w*h bitmap by d - 1 pixels (d = 1 is the identity), kept
+ * inside the box. Nearest-neighbour downscaling can drop edge pixels the render masks; growing the
+ * preview mask guarantees it never masks less than the render.
+ */
+export function dilateBitmap(bitmap: Uint8Array, w: number, h: number, d: number): Uint8Array {
+  const n = Math.max(0, Math.floor(d) - 1);
+  if (n === 0) return bitmap;
+  const tmp = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = 0;
+      for (let k = Math.max(0, x - n); k <= Math.min(w - 1, x + n) && !v; k++) v = bitmap[y * w + k] ? 1 : 0;
+      tmp[y * w + x] = v;
+    }
+  }
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = 0;
+      for (let k = Math.max(0, y - n); k <= Math.min(h - 1, y + n) && !v; k++) v = tmp[k * w + x];
+      out[y * w + x] = v;
+    }
+  }
+  return out;
+}
+
 const maskCanvases = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 function maskCanvasFor(off: HTMLCanvasElement): HTMLCanvasElement {
   let m = maskCanvases.get(off);
@@ -214,7 +246,7 @@ function drawRegion(
   // (3) shape alpha, strictly 0 / 255
   if (r.shape !== 'rect') {
     const pts = r.points ? r.points.map(([px, py]): [number, number] => [px - x, py - y]) : null;
-    const bm = shapeBitmap(r.shape, w, h, pts);
+    const bm = dilateBitmap(shapeBitmap(r.shape, w, h, pts), w, h, previewDilation(srcW, rect.w));
     const mask = maskCanvasFor(off);
     mask.width = w;
     mask.height = h;

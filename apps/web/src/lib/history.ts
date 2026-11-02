@@ -16,9 +16,8 @@ export function push(h: History, prev: Edits): History {
 }
 
 /**
- * The worker renderer still masks a manual box's tracking result when its id is missing from
- * edits.manual (an orphan), but the web preview does not. So an entry that exists now but not in the
- * snapshot we restore is kept as soft-deleted instead of being dropped.
+ * Manual entries are kept as soft-deleted when they exist now but not in the snapshot we restore,
+ * so undoing a creation really unmasks it in both the preview and the render.
  */
 function keepManualAsDeleted(target: Edits, current: Edits): Edits {
   const have = new Set(target.manual.map((m) => m.id));
