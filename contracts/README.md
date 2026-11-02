@@ -16,4 +16,4 @@ Rules encoded by the expected values:
 - Manual boxes: skip `deleted`; when `trim` is set keep only frames within [trim0, trim1]; block = max(8, min(w,h)//8).
 - Track boxes use the track's fixed `blockSize`. Boxes are already expanded; never expand again.
 - Effect order for a target piece: split-piece override, first group (in `groups` order) containing the track or piece, track override, `effects.default`. Manual regions: their own override, then default. Unknown override keys are ignored.
-- Polygon points are drawn on the anchor box D and mapped through the nearest anchor's propagated box A to the frame box B; on the anchor frame (B == A) and in the anchor fallback they equal the drawn polygon exactly.
+- Polygon points: P = B.xy + (P_drawn - A.xy) * (B.wh / A.wh), A = nearest anchor frame propagated box, B = frame box; equal to the drawn polygon at B == A and in the anchor fallback.

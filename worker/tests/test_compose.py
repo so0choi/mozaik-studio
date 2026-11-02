@@ -85,8 +85,8 @@ def test_polygon_exact_at_anchor_with_expanded_doc():
 def test_polygon_follows_box_translate_and_scale():
     doc = {"id": "m3", "frames": {"60": [93, 95, 75, 50], "61": [103, 95, 150, 50]}, "segments": [[60, 61]]}
     r = mask_regions({"tracks": []}, _poly_edits(), [doc])
-    # B center (178,120); D center (130,120); offsets (-30,-20),(30,-20),(0,20) scaled (2,1)
-    assert r[61][0]["points"] == [[118, 100], [238, 100], [178, 140]]
+    # A=[93,95,75,50] -> B=[103,95,150,50]: scale (2,1); P = B.xy + (P_drawn - A.xy) * scale
+    assert r[61][0]["points"] == [[117, 100], [237, 100], [177, 140]]
 
 
 def test_group_membership_after_split():

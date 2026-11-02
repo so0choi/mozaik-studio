@@ -69,22 +69,19 @@ def effect_for(piece_id: str, track_id: str, edits: dict) -> dict:
 
 
 def _poly_points(shape_pts, D, A, B) -> list[list[int]]:
-    """Map normalized polygon points (u, v) drawn on box D to frame box B (spec 4.1).
+    """Map normalized polygon points (u, v) drawn on box D to frame box B.
 
-    A is the propagated box on the anchor frame. When B == A the drawn polygon is
-    returned exactly (the formula alone would shift by the half pixel that box
-    expansion rounding adds to the center).
+    Linear box map from the anchor frame's propagated box A to B:
+    P = B.xy + (P_drawn - A.xy) * (B.wh / A.wh), rounded half up. At B == A this is
+    exactly the drawn polygon.
     """
     dx, dy, dw, dh = D
-    if list(B) == list(A):
-        return [[math.floor(dx + u * dw + 0.5), math.floor(dy + v * dh + 0.5)] for u, v in shape_pts]
-    bcx, bcy = B[0] + B[2] / 2, B[1] + B[3] / 2
-    dcx, dcy = dx + dw / 2, dy + dh / 2
     sx, sy = B[2] / A[2], B[3] / A[3]
-    return [
-        [math.floor(bcx + (dx + u * dw - dcx) * sx + 0.5), math.floor(bcy + (dy + v * dh - dcy) * sy + 0.5)]
-        for u, v in shape_pts
-    ]
+    out = []
+    for u, v in shape_pts:
+        px, py = dx + u * dw, dy + v * dh
+        out.append([math.floor(B[0] + (px - A[0]) * sx + 0.5), math.floor(B[1] + (py - A[1]) * sy + 0.5)])
+    return out
 
 
 def _make_region(rid, box, block, effect, shape="rect", points=None) -> Region:
