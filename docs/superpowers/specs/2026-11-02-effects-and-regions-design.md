@@ -1,0 +1,211 @@
+# 효과 종류·배경 효과·타원/다각형 영역 — 설계 스펙 (하위 프로젝트 A)
+
+- 작성일: 2026-11-02
+- 기준: `main` (d78df25 시점. 히스토리 재작성이 있었으므로 SHA가 아니라 "main 최신"을 기준으로 삼는다)
+- 상위 스펙: [2026-10-30-face-mosaic-studio-design.md](2026-10-30-face-mosaic-studio-design.md) — 이 문서는 그 §1 범위와 §3.5 데이터 계약을 개정한다.
+- 상태: 사용자와 절별 승인 완료(1 데이터 모델, 2 compose/render, 3 웹 미리보기·UI, 4 안전·테스트). 서면 검토 대기.
+
+## 0. 배경과 분해
+
+스튜디오 왼쪽 패널에는 아직 동작하지 않는 "준비 중" 항목이 있다(`apps/web/src/studio/LeftPanel.tsx`, `SOON`). 이들은 성격이 다른 세 하위 프로젝트로 나눈다. 각 하위 프로젝트는 별도 spec → plan → 구현 사이클을 거친다.
+
+| 하위 프로젝트 | 내용 | 이 문서 |
+|---|---|---|
+| **A. 렌더 모델 확장** | 효과 종류(모자이크·블러·단색, 대상별·전체), 배경 효과, 타원·다각형 수동 영역 | **다룸** |
+| B. 자동 탐지 확장 | 머리·번호판·사람 전체·자동차·텍스트 탐지 | 다루지 않음 (§9) |
+| C. 클릭 선택(세그멘테이션) | 화면에서 대상 클릭 → 영역 선택 | 다루지 않음 (§9) |
+
+A를 먼저 하는 이유: 모델 추가 없이 edits·compose·render·미리보기만 바꾸며, B·C가 만들어 낼 영역도 결국 A의 "모양 + 효과" 모델로 그려진다.
+
+## 1. 목표, 범위, 성공 기준
+
+**목표:** "무엇을 가리는가"(트랙·수동 영역의 범위)는 그대로 두고 "어떻게 가리는가"(효과, 모양, 배경)를 늘린다.
+
+**범위 안**
+- 효과 3종: `mosaic`, `blur`, `color`. 전역 기본값과 대상별 지정.
+- 강도(1–5)와 색상 지정.
+- 배경 효과: 가림 영역 밖의 화면 전체에 효과 적용(끄기/블러/모자이크/색상).
+- 수동 영역 모양: `rect`(기존), `ellipse`, `polygon`. 타원·다각형은 기존 CSRT 전파를 그대로 따라 이동·스케일한다.
+
+**범위 밖**
+- 자동 트랙의 모양 변경(자동 트랙은 항상 사각형, §4.1).
+- 다각형의 회전·변형 추적.
+- "기본값으로 초기화", "고급 설정" 버튼, 자동 탐지 클래스 칩, 클릭 선택 버튼(계속 비활성).
+- edits 스키마 버전 분리. 배포 이력이 없으므로 `version: 1`을 그대로 확장한다(사용자 결정, 2026-11-02).
+
+**성공 기준**
+1. 같은 job에서 효과·모양·배경을 바꿔도 자동 트랙이 가리는 픽셀 범위가 변경 전 이상이다(§6 불변식 1).
+2. 타원·다각형 수동 영역이 미리보기와 결과 영상에서 같은 위치를 가린다. 미리보기 쪽 오차는 바깥쪽 1px 이내다.
+3. 효과를 바꾸면 재처리 없이 미리보기에 즉시 반영되고, 렌더 결과가 같은 효과를 보인다.
+4. 1080p 영상에서 배경 블러를 켠 렌더 속도가 끈 경우 대비 측정·기록되어 있다(목표치는 plan에서 측정 후 확정).
+
+## 2. 사용자가 내린 결정 (2026-11-02)
+
+| 질문 | 결정 |
+|---|---|
+| 첫 하위 프로젝트 | A (렌더 모델 확장) |
+| 대상 효과의 "원본" | 새 효과 값이 아니라 기존 `visible` 토글과 같은 동작. 노출 경로는 계속 하나 |
+| 블러 강도와 미리보기 일치 | 박스 크기 비례 최소 강도 강제 + 가림 **범위(기하)** 는 정확히 일치, 블러 픽셀값은 근사 허용 |
+| 스키마 버전 | 배포 전이므로 `version: 1` 유지, 필드 추가. 누락 필드는 기본값 |
+| 다각형 움직임 | 앵커 박스 기준 상대좌표, 추적 박스를 따라 이동·스케일 |
+
+## 3. 데이터 계약 (상위 스펙 §3.5 개정)
+
+### 3.1 `edits.json` 추가 필드
+
+```json
+{
+  "version": 1,
+  "visible": ["t1"],
+  "groups": [], "splits": [], "reviewed": [],
+  "effects": {
+    "default": { "type": "mosaic", "strength": 1 },
+    "background": null,
+    "overrides": {
+      "t3": { "type": "blur", "strength": 2 },
+      "m1": { "type": "color", "color": "#000000" }
+    }
+  },
+  "manual": [
+    { "id": "m1", "shape": "rect", "anchors": [ { "frame": 2520, "box": [x,y,w,h] } ], "trim": null, "deleted": false },
+    { "id": "m2", "shape": "polygon", "points": [[0,0],[1,0.2],[0.6,1]], "anchors": [ ... ], "trim": null, "deleted": false }
+  ]
+}
+```
+
+`Effect = { type: "mosaic" | "blur" | "color", strength?: 1..5 (정수, 기본 1), color?: "#rrggbb" (color일 때, 기본 "#000000") }`
+
+- `effects` 누락 → `{ default: {type:"mosaic", strength:1}, background: null, overrides: {} }`.
+- `manual[].shape` 누락 → `"rect"`. `points`는 `shape: "polygon"`일 때만 필수.
+- `points`: 앵커 박스 기준 상대좌표 `[u, v]`, 0 ≤ u,v ≤ 1, 3개 이상. 모든 앵커와 전파 프레임에 같은 상대좌표를 쓴다.
+- `overrides` 키: 트랙 id, 그룹 id, 분할 조각 id(`<id>a`/`<id>b`), 수동 영역 id.
+- **"원본"은 효과 값이 아니다.** 효과로 가림을 끌 수 없다. 노출은 `visible`만으로 일어난다.
+
+### 3.2 효과 결정 순서
+
+대상 조각 하나의 효과 = 처음으로 존재하는 것:
+1. `overrides[분할 조각 id]` (분할된 경우)
+2. `overrides[그 트랙이 속한 그룹 id]` (여러 그룹이면 `groups` 배열 순서상 첫 그룹)
+3. `overrides[트랙 id]`
+4. `effects.default`
+
+수동 영역: `overrides[수동 id]` → `effects.default`.
+
+### 3.3 강도 → 파라미터
+
+배율 `k(s) = 1 + 0.5·(s − 1)` → s=1..5에서 1, 1.5, 2, 2.5, 3. 하한은 s=1이며 모든 값이 하한 이상이다.
+
+| 효과 | 대상 영역 (박스 w×h) | 배경 (프레임 W×H) |
+|---|---|---|
+| mosaic | 블록 = `round(base·k)`, base = 기존 값(트랙 `blockSize`, 수동 `max(8, min(w,h)//8)`) | 블록 = `round(max(8, min(W,H)//40)·k)` |
+| blur | Gaussian, σ = `max(min(w,h)/4, 2)·k` | σ = `(min(W,H)/60)·k`, ¼ 축소 → 블러 → 원크기 확대 |
+| color | 지정 색으로 채움 | 지정 색으로 채움 |
+
+트랙 블록은 트랙 단위로 고정이어야 한다(상위 스펙 R3-3). `round(blockSize·k)`도 트랙 단위 상수이므로 이 규칙을 지킨다.
+
+### 3.4 변하지 않는 것
+
+`tracks.json`, `manual/{id}.json`, `review.json`, 큐 메시지, API 엔드포인트 형태는 바뀌지 않는다. 전파(`POST :id/manual`)는 지금처럼 앵커 박스만 받는다. 다각형은 꼭짓점의 바운딩 박스를 앵커 박스로 보낸다.
+
+## 4. 워커: compose와 render
+
+### 4.1 `compose.mask_regions` (기존 `mask_boxes` 확장)
+
+```
+Region = { id, shape: "rect"|"ellipse"|"polygon", box: [x,y,w,h], points?: [[x,y],...] (절대 정수 좌표), effect: Effect, block: int }
+mask_regions(tracks_doc, edits, manual) -> { frame: [Region, ...] }   # (x, y) 정렬, 빈 프레임 없음
+```
+
+- 가림 대상 선정 규칙(기본 전부 가림, `visible`, 그룹, 분할, 수동 trim·deleted, 앵커 대체)은 `mask_boxes`와 한 줄씩 같다.
+- **자동 트랙은 항상 `rect`.** 확장된 얼굴 박스를 타원으로 깎으면 모서리로 얼굴이 드러날 수 있다.
+- 다각형 절대좌표: `x = box.x + round(u·box.w)`, `y = box.y + round(v·box.h)`.
+- 앵커 대체(전파 문서가 없음)에도 같은 shape·points를 적용한다.
+- `block`은 §3.3의 mosaic 블록이다(효과가 mosaic가 아니어도 계산해 둔다. fixture 비교 단순화).
+- `mask_boxes`는 제거하고 호출처(`render.py`, `test_compose.py`)를 `mask_regions`로 바꾼다. 웹 `maskBoxes`도 제거하고 호출처(`pages/Studio.tsx`, `masks.test.ts`)를 `maskRegions`로 바꾼다.
+
+### 4.2 `render` 프레임 처리 순서
+
+```
+src = 원본 프레임 (읽기 전용)
+out = src.copy()
+if effects.background:                       # 1. 배경
+    out = apply_effect(src 전체, background)
+for r in regions (x,y 정렬):                 # 2. 대상 영역 (항상 src 기준)
+    crop = src[r.box ∩ frame]
+    eff  = apply_effect(crop, r.effect, r.block)
+    mask = shape_mask(r)                     # 이진, 안티앨리어싱 없음
+    out[box][mask] = eff[mask]
+ffmpeg stdin <- out                          # 3. 이후 기존과 같음
+```
+
+- 배경을 먼저 전체에 칠하고 영역을 덮어쓰므로 합집합 마스크가 필요 없다. `visible`로 푼 얼굴은 영역이 아니므로 배경 효과를 받는다.
+- 모양 마스크: `rect` 전체, `ellipse`는 `cv2.ellipse`(박스 내접, `thickness=-1`, `LINE_8`), `polygon`은 `cv2.fillPoly`(`LINE_8`). 자기 교차 다각형은 `fillPoly` 결과를 그대로 따른다.
+- mosaic는 기존 `pixelate`(그리드 원점 = 박스 좌상단, BORDER_REPLICATE)를 crop에 적용한다.
+- 영역 하나의 처리 중 예외가 나면 그 영역의 `box ∩ mask`를 **검정**으로 채우고 `render.log`에 남긴 뒤 계속한다. 배경 처리 예외는 렌더 실패로 처리한다(기존 `MSG_RENDER_FAILED`).
+
+## 5. 웹: 미리보기와 UI
+
+### 5.1 미리보기 (`apps/web/src/lib`)
+
+- `masks.ts`: `maskRegions`를 Python과 한 줄씩 같게 구현한다(공유 fixture로 검증).
+  - 기존 차이 수정: edits에 항목이 없는 수동 문서를 Python은 가리고 웹은 가리지 않았다. 웹을 "가림"으로 맞춘다.
+- `pixelate.ts` → `effects.ts`로 확장:
+  - mosaic: 현재 구현 유지.
+  - blur: 오프스크린 canvas에 `ctx.filter = "blur(σpx)"`, σ는 §3.3과 같은 공식.
+  - color: 채우기.
+  - 모양: `rect`는 그대로, `ellipse`·`polygon`은 경로를 **바깥으로 1px 넓혀** (`lineWidth = 2` 스트로크 + 채우기) 클립한다. 안티앨리어싱으로 경계 픽셀이 반쯤 원본으로 보이는 것을 막아, 미리보기가 렌더보다 덜 가리지 않게 한다.
+- 합성 순서는 §4.2와 같다(배경 전체 → 영역 덮어쓰기, 영역은 원본 프레임 기준).
+- 프레임 디코딩 실패 시 회색(`#6b6f7a`) 채움은 유지한다.
+- 마스크가 적용된 필름스트립 썸네일도 `effects.ts`를 쓴다.
+
+### 5.2 왼쪽 패널
+
+| 항목 | 동작 |
+|---|---|
+| 대상 효과 (원본/블러/모자이크/색상) | 선택된 대상이 있으면 `overrides[id]`, 없으면 `effects.default`. "원본"은 선택된 대상의 `visible` 토글. 선택이 없으면 "원본" 비활성 |
+| 세부 조정 | 강도 슬라이더 1–5, 효과가 색상일 때만 색상 선택기 |
+| 배경 효과 (끄기/블러/모자이크/색상) | `effects.background` (끄기 = `null`) |
+| 직접 블러: 타원 | 사각형처럼 드래그로 그림 |
+| 직접 블러: 다각형 | 클릭으로 꼭짓점, 더블클릭 또는 Enter로 닫기, Esc 취소. 3점 미만이면 닫히지 않음 |
+
+- 모든 변경은 기존 edits 저장(`PUT :id/edits`)과 undo/redo 기록을 탄다.
+- 계속 비활성: 자동 탐지 클래스 칩, 클릭 선택 버튼, 기본값으로 초기화, 고급 설정.
+
+## 6. 안전 불변식
+
+1. **가림 범위 불변:** 어떤 `effects`·`shape` 설정에서도 자동 트랙이 가리는 픽셀 집합은 기존 `mask_boxes`의 사각형과 같다.
+2. **노출 경로는 visible 하나:** 검증기는 `type`이 3종 밖이거나 `strength`가 1–5 정수가 아니면 거부한다.
+3. **강도 하한:** 모든 효과 파라미터는 s=1 값 이상이다. 얼굴 크기 crop에 하한 블러를 걸었을 때 고주파 에너지 비율이 기준 이하인지 테스트한다(기준값은 plan에서 실측해 고정).
+4. **미리보기 ⊇ 렌더:** 미리보기가 가리는 픽셀 집합은 렌더가 가리는 집합을 포함한다(차이는 바깥 1px 이내).
+5. **실패하면 가린다:** 영역 처리 실패 시 검정, 프레임 디코딩 실패 시 회색.
+
+## 7. 오류 처리와 검증 (API `edits.validator.ts`)
+
+거부(400, 한국어 메시지):
+- `effects.*.type`이 `mosaic|blur|color` 밖, `"none"` 포함.
+- `strength`가 1–5 정수가 아님, `color`가 `#rrggbb`가 아님.
+- `overrides` 키가 트랙·그룹·분할 조각·수동 id 어디에도 없음.
+- `shape`가 `rect|ellipse|polygon` 밖, `polygon`인데 `points`가 없거나 3개 미만이거나 좌표가 [0,1] 밖, `polygon`이 아닌데 `points`가 있음.
+
+누락 필드는 기본값(§3.1)으로 읽는다. 기존 로컬 테스트 job의 edits.json은 그대로 열린다.
+
+## 8. 테스트
+
+| 층 | 대상 | 증명하는 것 |
+|---|---|---|
+| contracts | `expected-mask-frames.json`을 Region 형식으로 갱신, 케이스 추가(타원, 다각형, 그룹/분할 override, 배경, 앵커 대체+다각형, edits 항목 없는 수동 문서) | worker와 web이 같은 Region을 계산 |
+| worker pytest | `test_compose`: 효과 결정 순서, 다각형 좌표 변환, 자동 트랙 항상 rect. `test_render`: 모양별 마스크 픽셀 범위, 효과 하한(§6-3), 배경→영역 순서, 영역 예외 시 검정, 불변식 1 | 렌더 결과의 범위와 강도 |
+| web vitest | `maskRegions` fixture 일치, `effects.ts` 경계 1px 확장(불변식 4), LeftPanel: 선택 유무에 따른 쓰기 위치, 다각형 그리기 상태 | 미리보기 ⊇ 렌더, UI → edits |
+| API jest | `validateEdits` 허용/거부 케이스, 누락 필드 기본값 | 잘못된 edits는 저장되지 않음 |
+| 수동 QA | 샘플 영상 렌더 후 미리보기와 나란히 비교, 1080p 배경 블러 on/off fps 측정 | 실제 영상 품질과 비용 |
+
+## 9. 이 문서가 결정하지 않는 것 (B·C에서 사람이 결정)
+
+- **B. 자동 탐지 확장:** 클래스별 모델과 라이선스(예: YOLO 계열 상당수가 AGPL-3.0), `onnxruntime` 등 새 의존성 도입 여부(현재는 OpenCV만), `tracks.json`의 `class` 필드, 상위 스펙 §1에서 "번호판"을 범위 안으로 옮길지, CPU 전용 전제 유지 여부.
+- **C. 클릭 선택:** CPU에서 돌 수 있는 세그멘테이션 모델(경량 SAM 계열 등)과 라이선스, 결과를 다각형으로 바꿔 A의 `polygon` 수동 영역으로 넣는 방식이 유력. 상위 스펙의 "외형 특징·임베딩 미사용(생체정보 회피)" 원칙과 충돌하지 않는지 확인 필요.
+
+## 10. 상위 스펙 개정 사항 (구현 시 함께 반영)
+
+- §1 범위 밖: "번호판·배경 블러" → "번호판 블러". 배경 블러는 이 문서로 범위 안.
+- §3.5: `effects`, `manual[].shape`, `manual[].points` 추가와 이 문서 링크.
+- §4 워커 5번 "렌더": 프레임 처리 순서를 이 문서 §4.2로 대체.
