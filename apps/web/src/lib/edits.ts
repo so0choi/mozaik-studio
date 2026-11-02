@@ -1,4 +1,5 @@
 import { normalizeEffects } from './effectParams';
+import { effectFor } from './masks';
 import { people } from './people';
 import { pieces, splitFrames } from './pieces';
 import type { Box, Edits, Effect, ManualEdit, Person, TracksDoc } from './types';
@@ -94,15 +95,26 @@ export function groupPersons(doc: TracksDoc, edits: Edits, keys: string[]): Edit
   const overrides = { ...fx.overrides };
   const moved = overrides[first.key];
   // no member (piece or track) or dissolved-group override may survive: a piece override would outrank the group
-  const memberIds = new Set(pieces(doc, edits).filter((pc) => ids.has(pc.id)).map((pc) => pc.trackId));
+  const allPieces = pieces(doc, edits);
+  const memberIds = new Set(allPieces.filter((pc) => ids.has(pc.id)).map((pc) => pc.trackId));
   for (const k of [...dropKeys, ...ids, ...memberIds]) delete overrides[k];
   if (moved) overrides[id] = moved;
-  return {
+  const next: Edits = {
     ...edits,
     effects: { ...fx, overrides },
     groups: [...edits.groups.filter((g) => !dropKeys.has(g.id)), group],
     visible: allVisible ? [...visible, ...trackIds] : visible,
   };
+  // a parent track's override also styled its split pieces that were NOT grouped: deleting it must not
+  // change them, so copy the effect they had onto each such piece (never over its own override or group)
+  for (const pc of allPieces) {
+    if (ids.has(pc.id) || !memberIds.has(pc.trackId)) continue;
+    const before = effectFor(pc.id, pc.trackId, edits);
+    if (JSON.stringify(effectFor(pc.id, pc.trackId, next)) !== JSON.stringify(before)) {
+      overrides[pc.id] = before;
+    }
+  }
+  return next;
 }
 
 /** Set a person's name = group.label (creates a single-track group when needed). */

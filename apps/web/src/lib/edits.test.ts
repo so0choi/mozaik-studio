@@ -4,6 +4,7 @@ import {
   setBackgroundEffect, setDefaultEffect, setManualTrim, setPersonEffect, setTargetEffect, uncoverPerson,
 } from './edits';
 import { tracksDoc } from './fixtures';
+import { effectFor } from './masks';
 import { enlargeBox } from './geometry';
 import type { Edits } from './types';
 
@@ -122,6 +123,39 @@ describe('groupPersons effects', () => {
     const newId = e.groups.find((g) => g.id !== 'g1')!.id;
     expect(e.effects!.overrides.g1).toBeUndefined();
     expect(e.effects!.overrides[newId]).toEqual(blur);
+  });
+});
+
+describe('groupPersons with a split track', () => {
+  const red = { type: 'color' as const, strength: 1, color: '#ff0000' };
+  const split = () =>
+    splitTrack(
+      { ...emptyEdits(), effects: { default: blur, background: null, overrides: { t2: red } } } as never,
+      't2',
+      45,
+    );
+
+  it('grouping only t2a keeps the effect of its sibling t2b', () => {
+    const e0 = split();
+    expect(effectFor('t2b', 't2', e0)).toEqual(red);
+    const e = groupPersons(tracksDoc, e0, ['t2a', 't1']);
+    expect(effectFor('t2b', 't2', e)).toEqual(red);
+    expect(effectFor('t2a', 't2', e)).toEqual(blur); // member: the group (no override) falls to the default
+  });
+  it('grouping both pieces drops the track override (nothing left to preserve)', () => {
+    const e = groupPersons(tracksDoc, split(), ['t2a', 't2b']);
+    expect(e.effects!.overrides.t2).toBeUndefined();
+    expect(e.effects!.overrides.t2b).toBeUndefined();
+  });
+  it('does not overwrite a sibling piece override or override a sibling group effect', () => {
+    const green = { ...red, color: '#00ff00' };
+    const own = split();
+    own.effects!.overrides.t2b = green;
+    expect(effectFor('t2b', 't2', groupPersons(tracksDoc, own, ['t2a', 't1']))).toEqual(green);
+    const inGroup = { ...split(), groups: [{ id: 'g1', trackIds: ['t2b'] }] } as Edits;
+    inGroup.effects!.overrides.g1 = green;
+    const e = groupPersons(tracksDoc, inGroup, ['t2a', 't1']);
+    expect(effectFor('t2b', 't2', e)).toEqual(green);
   });
 });
 
