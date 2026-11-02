@@ -19,7 +19,7 @@ interface Props {
 }
 
 const MIN_BOX = 4;
-const CLOSE_PX = 10;
+const CLOSE_PX = 8;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 /** What stops a polygon from being confirmed, or null when it is valid. */
@@ -55,6 +55,8 @@ export function BoxTool({
   const [cursor, setCursor] = useState<Vertex | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
+  /** a real double-click is click(1) click(2) dblclick: click(1) added a vertex that dblclick must take back */
+  const dbl = useRef({ added: false, pending: false });
 
   useEffect(() => setBox(polyDraw ? null : initial), [initial, polyDraw]);
 
@@ -143,7 +145,12 @@ export function BoxTool({
     setBox((b) => (b && (b[2] < MIN_BOX || b[3] < MIN_BOX) ? initial : b));
   };
   const onClick = (e: React.MouseEvent) => {
-    if (!polyDraw || closed || inActions(e) || e.detail >= 2) return;
+    if (!polyDraw || closed || inActions(e)) return;
+    if (e.detail >= 2) {
+      dbl.current.pending = true;
+      return;
+    }
+    dbl.current = { added: false, pending: false };
     const p = toSrc(e.clientX, e.clientY);
     if (verts.length >= 3) {
       const k = srcW / rect.w;
@@ -152,11 +159,16 @@ export function BoxTool({
         return;
       }
     }
+    dbl.current.added = true;
     setVerts((v) => [...v, clampVertex([Math.round(p.x), Math.round(p.y)], srcW, srcH)]);
   };
   const onDouble = (e: React.MouseEvent) => {
     if (!polyDraw || inActions(e)) return;
-    setClosed(true);
+    const undo = dbl.current.pending && dbl.current.added;
+    dbl.current = { added: false, pending: false };
+    const remaining = undo ? verts.length - 1 : verts.length;
+    if (undo) setVerts((v) => v.slice(0, -1));
+    if (remaining >= 3) setClosed(true);
     e.preventDefault();
   };
 
@@ -180,12 +192,12 @@ export function BoxTool({
   let message: string;
   if (polyDraw) {
     message = `꼭짓점 ${verts.length}개 · ${
-      problem ?? (closed ? '도형이 닫혔습니다. Enter로 확정, Backspace로 점 삭제' : '클릭으로 점 추가, 첫 점 클릭·더블클릭·Enter로 완료')
+      problem ?? (closed ? '도형이 닫혔습니다. Enter로 확정, Backspace로 점 삭제' : '클릭해 꼭짓점 추가 · Enter 또는 첫 점 클릭으로 닫기 · Backspace 되돌리기 · Esc 취소')
     }`;
   } else if (shape === 'polygon') {
     message = '위치·크기만 다시 그립니다. 드래그해 새 영역을 지정하세요';
   } else if (shape === 'ellipse') {
-    message = '드래그해 가릴 타원 영역을 그리세요';
+    message = '드래그해 가릴 영역을 그리세요';
   } else {
     message = '드래그해 가릴 영역을 그리세요';
   }

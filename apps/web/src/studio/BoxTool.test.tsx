@@ -24,6 +24,11 @@ const drag = (el: HTMLElement, a: [number, number], b: [number, number]) => {
   fireEvent.pointerUp(el, { clientX: b[0], clientY: b[1], pointerId: 1 });
 };
 const click = (el: HTMLElement, x: number, y: number) => fireEvent.click(el, { clientX: x, clientY: y, detail: 1 });
+const realDouble = (el: HTMLElement, x: number, y: number) => {
+  fireEvent.click(el, { clientX: x, clientY: y, detail: 1 });
+  fireEvent.click(el, { clientX: x, clientY: y, detail: 2 });
+  fireEvent.doubleClick(el, { clientX: x, clientY: y, detail: 2 });
+};
 const confirmBtn = () => screen.getByRole('button', { name: '이 영역으로 추적' });
 const status = () => screen.getByRole('status');
 
@@ -74,9 +79,44 @@ describe('BoxTool polygon', () => {
     click(tool, 100, 100);
     click(tool, 200, 100);
     click(tool, 100, 160);
-    fireEvent.doubleClick(tool, { clientX: 400, clientY: 300 });
+    realDouble(tool, 400, 300);
     expect(screen.getByTestId('boxtool-shape')).toHaveAttribute('data-closed', 'true');
     expect(status()).toHaveTextContent('꼭짓점 3개');
+  });
+
+  it('double click with fewer than 3 vertices does not close and a later click still adds', () => {
+    const { tool } = setup({ shape: 'polygon' });
+    click(tool, 100, 100);
+    click(tool, 200, 100);
+    realDouble(tool, 300, 200);
+    expect(status()).toHaveTextContent('꼭짓점 2개');
+    click(tool, 100, 160);
+    expect(status()).toHaveTextContent('꼭짓점 3개');
+    expect(screen.getByTestId('boxtool-shape')).toHaveAttribute('data-closed', 'false');
+  });
+
+  it('close radius is 8 display px: 9px away adds a vertex, 7px closes', () => {
+    const { tool } = setup({ shape: 'polygon' });
+    click(tool, 100, 100);
+    click(tool, 200, 100);
+    click(tool, 100, 160);
+    click(tool, 109, 100);
+    expect(status()).toHaveTextContent('꼭짓점 4개');
+    expect(screen.getByTestId('boxtool-shape')).toHaveAttribute('data-closed', 'false');
+    click(tool, 107, 100);
+    expect(screen.getByTestId('boxtool-shape')).toHaveAttribute('data-closed', 'true');
+    expect(status()).toHaveTextContent('꼭짓점 4개');
+  });
+
+  it('hint texts follow the spec', () => {
+    const { unmount, tool } = setup({ shape: 'polygon' });
+    click(tool, 100, 100);
+    click(tool, 200, 100);
+    click(tool, 100, 160);
+    expect(status()).toHaveTextContent('클릭해 꼭짓점 추가 · Enter 또는 첫 점 클릭으로 닫기 · Backspace 되돌리기 · Esc 취소');
+    unmount();
+    setup({ shape: 'ellipse' });
+    expect(status()).toHaveTextContent('드래그해 가릴 영역을 그리세요');
   });
 
   it('Backspace removes the last vertex and reopens a closed shape', () => {
@@ -85,7 +125,7 @@ describe('BoxTool polygon', () => {
     click(tool, 200, 100);
     click(tool, 100, 160);
     click(tool, 50, 130);
-    fireEvent.doubleClick(tool);
+    realDouble(tool, 0, 0);
     fireEvent.keyDown(window, { key: 'Backspace' });
     expect(status()).toHaveTextContent('꼭짓점 3개');
     expect(screen.getByTestId('boxtool-shape')).toHaveAttribute('data-closed', 'false');
