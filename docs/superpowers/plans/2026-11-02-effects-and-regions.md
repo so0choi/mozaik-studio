@@ -211,7 +211,7 @@ def test_render_end_to_end_with_effects(tmp_path): ... # 기존 render 통합 �
   - `mask uses shapeBitmap alpha with destination-in`: ellipse Region에서 `putImageData`로 넣은 마스크 알파가 `shapeBitmap` 결과와 같고(0/255), 합성 모드가 `destination-in`.
   - `color effect uses region color`, `blur uses filter blur(σ px)` (σ = `regionSigma`, 소스 픽셀 단위 오프스크린).
   - `blur skipped when ctx.filter unsupported`: 가짜 ctx에서 `filter` 대입이 반영되지 않으면(읽으면 `'none'`) blur 단계 호출 없음, mosaic 밑칠은 있음. 배경 blur는 같은 조건에서 배경 mosaic로 그림.
-- Produces 추가: `supportsCanvasFilter(ctx: CanvasRenderingContext2D): boolean` — `ctx.filter = 'blur(1px)'` 후 값을 읽어 확인하고 `'none'`으로 되돌린다. 결과는 모듈 변수에 캐시.
+- Produces 추가: `supportsCanvasFilter(): boolean` — `'filter' in CanvasRenderingContext2D.prototype`이고, 작은 캔버스에 불투명 픽셀 하나를 `blur(1px)`로 그렸을 때 이웃 픽셀 알파가 0보다 큰지 픽셀로 확인한다(대입 후 읽기만으로는 속성이 없는 브라우저에서 거짓 양성). 결과는 모듈 변수에 캐시.
 - [ ] **Step 2: 실패 확인** — `npx vitest run src/lib/effects.test.ts`
 - [ ] **Step 3: 구현** — 영역은 위 4단계. 오프스크린은 소스 픽셀 크기라 비트맵과 1:1로 맞는다. 배경 blur는 ¼ 크기 캔버스(지원 안 되면 배경 mosaic). 배경 mosaic는 프레임 전체 `pixelate`. `PlayerOverlay`와 `Filmstrip`은 `drawFrameEffects`만 호출(Filmstrip 썸네일의 최소 블록 `MIN_THUMB_BLOCK`은 유지).
 - [ ] **Step 4: 통과 확인** — `npx vitest run && npm run typecheck`
