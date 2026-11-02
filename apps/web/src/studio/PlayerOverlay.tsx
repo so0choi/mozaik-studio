@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { formatTime, frameAt } from '../lib/frames';
+import { frameAt } from '../lib/frames';
 import { containRect, toDisplay, type Rect } from '../lib/geometry';
+import { pixelate } from '../lib/pixelate';
 import type { Box, MaskBox } from '../lib/types';
 
 export interface Highlight {
@@ -22,58 +23,12 @@ interface Props {
   /** outline of the selected person at a frame (source pixels) */
   focusBoxes: (frame: number) => Box[];
   onFrame: (frame: number) => void;
-  /** step the playhead by whole frames (pauses first) */
-  onStep?: (delta: number) => void;
   /** rendered over the video (e.g. the box drawing tool); receives the content rect */
   children?: (rect: Rect) => ReactNode;
 }
 
-function pixelate(
-  ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
-  off: HTMLCanvasElement,
-  b: MaskBox,
-  rect: Rect,
-  srcW: number,
-  srcH: number,
-) {
-  const [x, y, w, h, block] = b;
-  const [dx, dy, dw, dh] = toDisplay([x, y, w, h], srcW, srcH, rect.w, rect.h);
-  const ox = rect.x + dx;
-  const oy = rect.y + dy;
-  const octx = off.getContext('2d');
-  if (!octx || video.readyState < 2 || !video.videoWidth) {
-    // frame not decodable yet: never show the raw area
-    ctx.fillStyle = '#6b6f7a';
-    ctx.fillRect(ox, oy, dw, dh);
-    return;
-  }
-  // block grid origin = box top-left in SOURCE pixels, block size in source pixels
-  const cols = Math.max(1, Math.ceil(w / block));
-  const rows = Math.max(1, Math.ceil(h / block));
-  off.width = cols;
-  off.height = rows;
-  const vx = video.videoWidth / srcW;
-  const vy = video.videoHeight / srcH;
-  try {
-    octx.drawImage(video, x * vx, y * vy, cols * block * vx, rows * block * vy, 0, 0, cols, rows);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(ox, oy, dw, dh);
-    ctx.clip();
-    ctx.imageSmoothingEnabled = false;
-    const sx = rect.w / srcW;
-    const sy = rect.h / srcH;
-    ctx.drawImage(off, 0, 0, cols, rows, ox, oy, cols * block * sx, rows * block * sy);
-    ctx.restore();
-  } catch {
-    ctx.fillStyle = '#6b6f7a';
-    ctx.fillRect(ox, oy, dw, dh);
-  }
-}
-
 function PlayerOverlayInner(props: Props) {
-  const { src, videoRef, srcW, srcH, fps, frameCount, frame, children } = props;
+  const { src, videoRef, srcW, srcH, fps, frame, children } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const offRef = useRef<HTMLCanvasElement | null>(null);
@@ -81,7 +36,6 @@ function PlayerOverlayInner(props: Props) {
   propsRef.current = props;
   const mediaTime = useRef(0);
   const lastFrame = useRef(-1);
-  const [playing, setPlaying] = useState(false);
   const [rect, setRect] = useState<Rect>({ x: 0, y: 0, w: 0, h: 0 });
 
   const draw = useCallback(() => {
@@ -103,7 +57,13 @@ function PlayerOverlayInner(props: Props) {
     ctx.clearRect(0, 0, w, h);
     const r = containRect(p.srcW, p.srcH, w, h);
     if (!offRef.current) offRef.current = document.createElement('canvas');
-    for (const b of p.boxes.get(f) ?? []) pixelate(ctx, v, offRef.current, b, r, p.srcW, p.srcH);
+    const src = {
+      image: v,
+      width: v.videoWidth,
+      height: v.videoHeight,
+      ready: v.readyState >= 2 && !!v.videoWidth,
+    };
+    for (const b of p.boxes.get(f) ?? []) pixelate(ctx, src, offRef.current, b, r, p.srcW, p.srcH);
 
     for (const fb of p.focusBoxes(f)) {
       const [dx, dy, dw, dh] = toDisplay(fb, p.srcW, p.srcH, r.w, r.h);
@@ -153,13 +113,8 @@ function PlayerOverlayInner(props: Props) {
       mediaTime.current = v.currentTime;
       draw();
     };
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
     v.addEventListener('seeked', sync);
     v.addEventListener('loadeddata', sync);
-    v.addEventListener('play', onPlay);
-    v.addEventListener('pause', onPause);
-    v.addEventListener('ended', onPause);
 
     type VFC = (cb: (now: number, meta: { mediaTime: number }) => void) => number;
     const rvfc = (v as unknown as { requestVideoFrameCallback?: VFC }).requestVideoFrameCallback;
@@ -188,9 +143,6 @@ function PlayerOverlayInner(props: Props) {
       v.removeEventListener('seeked', sync);
       v.removeEventListener('loadeddata', sync);
       v.removeEventListener('timeupdate', sync);
-      v.removeEventListener('play', onPlay);
-      v.removeEventListener('pause', onPause);
-      v.removeEventListener('ended', onPause);
       const cancel = (v as unknown as { cancelVideoFrameCallback?: (h: number) => void }).cancelVideoFrameCallback;
       if (handle && cancel) cancel.call(v, handle);
       if (raf) window.cancelAnimationFrame(raf);
@@ -204,47 +156,11 @@ function PlayerOverlayInner(props: Props) {
     draw();
   }, [props.boxes, props.highlight, props.focusBoxes, frame, fps, draw, videoRef]);
 
-  const toggle = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) void v.play()?.catch?.(() => undefined);
-    else v.pause();
-  };
-  const back = () => {
-    const v = videoRef.current;
-    if (v) v.currentTime = Math.max(0, v.currentTime - 5);
-  };
-
   return (
     <div className="player" ref={wrapRef} data-testid="player">
       <video ref={videoRef} src={src} preload="auto" playsInline aria-label="미리보기 영상" />
       <canvas ref={canvasRef} aria-hidden="true" data-testid="overlay-canvas" />
       {children?.(rect)}
-      <div className="pctl">
-        <button type="button" className="play" onClick={toggle} aria-label={playing ? '일시정지' : '재생'}>
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            {playing ? <path d="M3.5 2h3v12h-3zM9.5 2h3v12h-3z" /> : <path d="M4 2.5v11l9-5.5z" />}
-          </svg>
-        </button>
-        <button type="button" className="ic" onClick={back} aria-label="5초 뒤로">
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M8 3v3L3.5 3.5 8 1v2a6 6 0 11-6 6h1.6A4.4 4.4 0 108 3z" transform="translate(0 1)" />
-          </svg>
-        </button>
-        <button type="button" className="ic" onClick={() => props.onStep?.(-1)} aria-label="1프레임 뒤로">
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M3 2h2v12H3zM13 2.5v11L6 8z" />
-          </svg>
-        </button>
-        <button type="button" className="ic" onClick={() => props.onStep?.(1)} aria-label="1프레임 앞으로">
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M11 2h2v12h-2zM3 2.5v11L10 8z" />
-          </svg>
-        </button>
-        <div className="time" data-testid="time">
-          {formatTime(frame / fps)} <span>/ {formatTime(frameCount / fps)}</span>
-        </div>
-      </div>
     </div>
   );
 }

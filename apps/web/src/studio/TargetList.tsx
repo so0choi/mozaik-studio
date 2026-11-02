@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { formatDuration } from '../lib/frames';
-import type { Person } from '../lib/types';
+import type { ManualEdit, ManualState, Person } from '../lib/types';
 
 interface Props {
   people: Person[];
@@ -14,6 +14,10 @@ interface Props {
   onCancelSelect: () => void;
   onRename: (key: string, label: string) => void;
   onShowSuspects: () => void;
+  manualList: ManualEdit[];
+  manualState: Record<string, ManualState>;
+  manualOpen: string | null;
+  onOpenManual: (id: string) => void;
 }
 
 type Filter = 'all' | 'hidden' | 'shown';
@@ -136,7 +140,7 @@ function Row(p: RowProps) {
           {p.suspectBadge && <span className="badge-suspect">얼굴 아닐 수 있음</span>}
         </span>
       </div>
-      <span className={`pl-st${person.visible ? ' v' : ''}`}>{person.visible ? '보임' : '가림'}</span>
+      <span className={`rtag${person.visible ? ' v' : ''}`}>{person.visible ? '원본' : '모자이크'}</span>
       <button
         type="button"
         className="pl-sw"
@@ -152,10 +156,12 @@ function Row(p: RowProps) {
   );
 }
 
-function PeopleListInner(p: Props) {
+function TargetListInner(p: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [suspectOpen, setSuspectOpen] = useState(false);
+  const [autoOpen, setAutoOpen] = useState(true);
+  const [manualGroupOpen, setManualGroupOpen] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
 
   const main = p.people.filter((x) => !x.suspect);
@@ -201,11 +207,31 @@ function PeopleListInner(p: Props) {
     </button>
   );
 
+  const caret = (
+    <svg className="car" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 2l5 5-5 5" />
+    </svg>
+  );
+
   return (
-    <aside className="left" aria-labelledby="title">
-      <div className="lhead">
-        <h1 id="title">{main.length || suspects.length ? `등장인물 ${count}명` : '등장인물'}</h1>
-        <p className="hint">기본은 모두 가림 · 보일 사람만 켜세요</p>
+    <section className="tlist" aria-labelledby="tl-title">
+      <div className="thead">
+        <h2 id="tl-title">
+          블러 대상 <em>{count}</em>
+        </h2>
+        {p.selected.size >= 2 && (
+          <div className="pl-selbar" role="region" aria-label="선택한 인물 묶기">
+            <span>{p.selected.size}개 선택됨</span>
+            <button type="button" className="go" onClick={p.onMerge}>
+              같은 사람으로 묶기
+            </button>
+            <button type="button" className="g" onClick={p.onCancelSelect}>
+              해제
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="tfilters">
         <div className="pl-search">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
             <circle cx="7" cy="7" r="4.5" />
@@ -225,62 +251,95 @@ function PeopleListInner(p: Props) {
           {chip('shown', '보임', p.people.filter((x) => x.visible).length)}
         </div>
       </div>
-      <div className="pl-list">
+      <div className="tgroups">
         {count === 0 ? (
           <p className="noppl">검출된 얼굴이 없습니다</p>
         ) : (
-          <>
-            {main.length > 0 && mainShown.length === 0 && <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>}
-            {mainShown.length > 0 && <ul className="pl-rows">{mainShown.map((x) => row(x, false))}</ul>}
-          </>
-        )}
-      </div>
-      {p.selected.size >= 2 && (
-        <div className="pl-selbar" role="region" aria-label="선택한 인물 묶기">
-          <span>{p.selected.size}개 선택됨</span>
-          <button type="button" className="go" onClick={p.onMerge}>
-            같은 사람으로 묶기
-          </button>
-          <button type="button" className="g" onClick={p.onCancelSelect}>
-            해제
-          </button>
-        </div>
-      )}
-      {suspects.length > 0 && (
-        <div className={`pl-group${suspectOpen ? ' open' : ''}`}>
-          <div className="pl-ghead">
-            <button
-              type="button"
-              className="pl-gtoggle"
-              aria-expanded={suspectOpen}
-              aria-controls="suspect-body"
-              onClick={() => setSuspectOpen(!suspectOpen)}
-            >
-              <svg className="car" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 2l5 5-5 5" />
-              </svg>
-              <span>얼굴 아닐 수 있음 ({suspects.length})</span>
-            </button>
-            {hiddenSuspects > 0 && (
-              <button type="button" className="pl-gact" onClick={showSuspects}>
-                확인 후 모두 보임
+          <div className={`tgroup${autoOpen ? ' open' : ''}`}>
+            <div className="tg-head">
+              <button type="button" className="tg-toggle" aria-expanded={autoOpen} aria-controls="auto-body" onClick={() => setAutoOpen(!autoOpen)}>
+                {caret}
+                <span>자동 블러</span>
+                {' '}
+                <em>{main.length}</em>
               </button>
+            </div>
+            {autoOpen && (
+              <div id="auto-body" className="tg-body">
+                {main.length > 0 && mainShown.length === 0 && <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>}
+                {mainShown.length > 0 && <ul className="pl-rows">{mainShown.map((x) => row(x, false))}</ul>}
+              </div>
             )}
           </div>
-          {suspectOpen && (
-            <div id="suspect-body" className="pl-gbody">
-              <p className="pl-gnote">음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 가려진 채로 시작합니다.</p>
-              {suspectShown.length === 0 ? (
-                <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>
-              ) : (
-                <ul className="pl-rows">{suspectShown.map((x) => row(x, true))}</ul>
+        )}
+        {suspects.length > 0 && (
+          <div className={`tgroup suspect${suspectOpen ? ' open' : ''}`}>
+            <div className="tg-head">
+              <button type="button" className="tg-toggle" aria-expanded={suspectOpen} aria-controls="suspect-body" onClick={() => setSuspectOpen(!suspectOpen)}>
+                {caret}
+                <span>얼굴 아닐 수 있음</span>
+                {' '}
+                <em>{suspects.length}</em>
+              </button>
+              {hiddenSuspects > 0 && (
+                <button type="button" className="pl-gact" onClick={showSuspects}>
+                  확인 후 모두 보임
+                </button>
               )}
             </div>
-          )}
-        </div>
-      )}
-    </aside>
+            {suspectOpen && (
+              <div id="suspect-body" className="tg-body">
+                <p className="pl-gnote">음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 가려진 채로 시작합니다.</p>
+                {suspectShown.length === 0 ? (
+                  <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>
+                ) : (
+                  <ul className="pl-rows">{suspectShown.map((x) => row(x, true))}</ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {p.manualList.length > 0 && (
+          <div className={`tgroup manual${manualGroupOpen ? ' open' : ''}`} data-testid="manual-chip">
+            <div className="tg-head">
+              <button type="button" className="tg-toggle" aria-expanded={manualGroupOpen} aria-controls="manual-body" onClick={() => setManualGroupOpen(!manualGroupOpen)}>
+                {caret}
+                <span>직접 블러</span>
+                {' '}
+                <em>{p.manualList.length}</em>
+              </button>
+            </div>
+            {manualGroupOpen && (
+              <ul id="manual-body" className="tg-body mrows">
+                {p.manualList.map((m) => (
+                  <li key={m.id}>
+                    <button
+                      type="button"
+                      className={`mrow${p.manualOpen === m.id ? ' on' : ''}`}
+                      aria-pressed={p.manualOpen === m.id}
+                      onClick={() => p.onOpenManual(m.id)}
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                        <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />
+                      </svg>
+                      <span>수동 박스 {m.id}</span>
+                      {p.manualState[m.id] === 'tracking' && (
+                        <>
+                          <span className="mst">추적 중</span>
+                          <i className="spin" />
+                        </>
+                      )}
+                      {p.manualState[m.id] === 'failed' && <span className="mst bad">실패</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
-export const PeopleList = memo(PeopleListInner);
+export const TargetList = memo(TargetListInner);
