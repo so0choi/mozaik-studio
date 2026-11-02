@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addManualAnchor, addManualEdit, deleteManual, emptyEdits, groupPersons, normalizeEdits,
+  addManualAnchor, addManualEdit, deleteManual, emptyEdits, groupPersons, normalizeEdits, splitTrack,
   setBackgroundEffect, setDefaultEffect, setManualTrim, setPersonEffect, setTargetEffect, uncoverPerson,
 } from './edits';
 import { tracksDoc } from './fixtures';
@@ -122,6 +122,19 @@ describe('groupPersons effects', () => {
     const newId = e.groups.find((g) => g.id !== 'g1')!.id;
     expect(e.effects!.overrides.g1).toBeUndefined();
     expect(e.effects!.overrides[newId]).toEqual(blur);
+  });
+});
+
+describe('splitTrack effects', () => {
+  it('does not add an override for a group without one, nor for a multi-member group', () => {
+    const noFx = splitTrack({ ...emptyEdits(), groups: [{ id: 'g1', trackIds: ['t2'] }] }, 't2', 45);
+    expect(noFx.effects?.overrides ?? {}).toEqual({});
+    const multi = splitTrack(
+      { ...emptyEdits(), groups: [{ id: 'g1', trackIds: ['t1', 't2'] }], effects: { default: blur, background: null, overrides: { g1: blur } } } as never,
+      't2',
+      45,
+    );
+    expect(multi.effects!.overrides).toEqual({ g1: blur });
   });
 });
 
