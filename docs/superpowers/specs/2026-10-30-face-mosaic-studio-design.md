@@ -8,7 +8,7 @@
 
 연내(2026-12-31) 사내 데모용 독립 웹 스튜디오. 업로드한 녹화 영상에서 얼굴을 자동 검출·추적해 기본 전부 모자이크하고, 사용자가 사람별로 보이게 하거나(특정인 제외), 위험 구간을 검수하고, 수동 박스를 추가한 뒤, 오디오가 보존된 결과를 다운로드한다.
 
-**범위 밖:** 실시간 라이브(R-Live), 얼굴 인식/ReID(R-Recog), 번호판·배경 블러, 미디버스/커머스 연동, 일괄 처리.
+**범위 밖:** 실시간 라이브(R-Live), 얼굴 인식/ReID(R-Recog), 번호판 블러, 미디버스/커머스 연동, 일괄 처리.
 
 **성공 기준**
 1. 1080p 5분 영상 업로드 → 분석 → 갤러리에서 특정인 보임 → 확인 필요 항목 처리 → 수동 박스 1개 → 렌더 → 오디오 포함 다운로드가 한 번에 된다.
@@ -101,13 +101,15 @@
   "visible": ["t1"],
   "groups": [ { "id": "g1", "trackIds": ["t1","t5"], "label": "진행자" } ],
   "splits": [ { "trackId": "t2", "frame": 1500 } ],
-  "manual": [ { "id": "m1", "anchors": [ { "frame": 2520, "box": [x,y,w,h] } ], "trim": [2400, 2700], "deleted": false } ],
-  "reviewed": ["r1"]
+  "manual": [ { "id": "m1", "anchors": [ { "frame": 2520, "box": [x,y,w,h] } ], "trim": [2400, 2700], "deleted": false, "shape": "rect", "points": [] } ],
+  "reviewed": ["r1"],
+  "effects": { "default": { "type": "mosaic" }, "background": null, "overrides": {} }
 }
 ```
 - 기본은 전부 가림. `visible`에 있는 트랙(그룹이면 그룹 전체)만 보임.
 - `splits`: 트랙을 frame에서 나눠 `t2` → `t2a`(<frame), `t2b`(≥frame). 보임/가림은 분할된 조각 ID로 지정.
 - 그룹은 사람이 직접 묶는 것이며 외형 비교는 하지 않는다.
+- `effects`(기본 효과·배경 효과·대상별 효과), `manual[].shape`(`rect`|`ellipse`|`polygon`), `manual[].points`(다각형 꼭짓점, 기준 박스 안 [0,1] 비율 좌표)는 [효과·영역 스펙](2026-11-02-effects-and-regions-design.md) §3이 정의한다. 모두 선택 필드이며 없으면 모자이크·사각형·배경 끔으로 기존과 같게 렌더한다.
 
 ### 3.6 `manual/{id}.json`
 `{ "id": "m1", "frames": { "2400": [x,y,w,h], ... }, "segments": [[2400, 2700]] }` — 저장 시 25% 확장 적용 완료. 재기준(re-anchor) 시 새 기준 프레임과 가장 가까운 다른 기준 프레임 사이의 프레임만 교체한다. CSRT는 실패 신호 없이 어긋날 수 있으므로 사용자가 재기준·trim·삭제로 고친다. 전파 범위: 방향별 최대 10초 또는 추적 실패 시 중단.
@@ -118,7 +120,7 @@
 2. **검출:** YuNet `score_threshold=0.5`, `nms_threshold=0.3`. 프레임 짧은 변 > 1080이면 1080으로 축소해 검출 후 좌표 환산. 진행률은 프레임 비율.
 3. **추적:** 2단계 매칭(점수 ≥0.6 먼저, 나머지 후), IoU 임계 0.3, 중심 이동이 박스 대각선의 0.5배를 넘으면 강제 분리. 끊긴 트랙은 gap-hold(0.5초 = round(0.5×fps) 프레임) 동안 등속 예측 위치로 박스를 유지하고 박스를 프레임마다 5%씩 키운다. 3프레임 미만 트랙은 버리지 않고 유지(노출 방지 우선).
 4. **썸네일:** 트랙에서 `score × 면적`이 최대인 프레임의 박스를 20% 여유를 두고 잘라 160px. 샘플 썸네일은 2초 간격, 최대 8장.
-5. **렌더:** `tracks.json` + `edits.json` + `manual/*.json`을 합쳐 프레임별 가릴 박스 목록 생성 → 각 박스를 트랙 `blockSize` 격자(원점 박스 좌상단)로 픽셀화 → OpenCV로 프레임 쓰기를 ffmpeg 파이프(stdin rawvideo)로 넘겨 H.264 CRF 20 인코딩, `normalized.mp4`의 오디오를 `-c:a copy`로 mux(오디오 없으면 생략).
+5. **렌더:** 프레임 처리 순서(배경 → 영역)와 효과·모양 적용은 [효과·영역 스펙](2026-11-02-effects-and-regions-design.md) §4.2를 따른다. 기본 동작(효과 없음)은 다음과 같다. `tracks.json` + `edits.json` + `manual/*.json`을 합쳐 프레임별 가릴 박스 목록 생성 → 각 박스를 트랙 `blockSize` 격자(원점 박스 좌상단)로 픽셀화 → OpenCV로 프레임 쓰기를 ffmpeg 파이프(stdin rawvideo)로 넘겨 H.264 CRF 20 인코딩, `normalized.mp4`의 오디오를 `-c:a copy`로 mux(오디오 없으면 생략).
 6. **CSRT 전파:** `cv2.TrackerCSRT_create` (opencv-contrib). 기준 프레임에서 앞뒤로 진행.
 
 ## 5. API (NestJS)
