@@ -78,11 +78,12 @@ export function BoxTool({
     const pts = dedupeVertices(verts);
     const xs = pts.map((p) => p[0]);
     const ys = pts.map((p) => p[1]);
-    const b = clampBox(
-      [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)],
-      srcW,
-      srcH,
-    );
+    // outward bounding box (floor the min, ceil the max) clamped to the frame: no vertex is pulled inward
+    const x0 = Math.max(0, Math.min(srcW - 1, Math.floor(Math.min(...xs))));
+    const y0 = Math.max(0, Math.min(srcH - 1, Math.floor(Math.min(...ys))));
+    const x1 = Math.min(srcW, Math.max(x0 + 1, Math.ceil(Math.max(...xs))));
+    const y1 = Math.min(srcH, Math.max(y0 + 1, Math.ceil(Math.max(...ys))));
+    const b: [number, number, number, number] = [x0, y0, x1 - x0, y1 - y0];
     const norm = pts.map(
       ([x, y]) =>
         [round4(Math.max(0, Math.min(1, (x - b[0]) / b[2]))), round4(Math.max(0, Math.min(1, (y - b[1]) / b[3])))] as [number, number],
@@ -180,13 +181,18 @@ export function BoxTool({
     return [rect.x + x, rect.y + y];
   };
   const polyPoints = useMemo(() => {
-    if (polyDraw) return verts.map(dp);
-    if (shape === 'polygon' && initialPoints && disp) {
-      return initialPoints.map(([u, v]): [number, number] => [rect.x + disp[0] + u * disp[2], rect.y + disp[1] + v * disp[3]]);
+    if (polyDraw) {
+      return verts.map((p): [number, number] => {
+        const [x, y] = toDisplay([p[0], p[1], 0, 0], srcW, srcH, rect.w, rect.h);
+        return [rect.x + x, rect.y + y];
+      });
+    }
+    if (shape === 'polygon' && initialPoints && box) {
+      const d = toDisplay(box, srcW, srcH, rect.w, rect.h);
+      return initialPoints.map(([u, v]): [number, number] => [rect.x + d[0] + u * d[2], rect.y + d[1] + v * d[3]]);
     }
     return [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [polyDraw, verts, shape, initialPoints, box, rect.x, rect.y, rect.w, rect.h]);
+  }, [polyDraw, verts, shape, initialPoints, box, srcW, srcH, rect.x, rect.y, rect.w, rect.h]);
   const pstr = (pts: [number, number][]) => pts.map((p) => p.join(',')).join(' ');
 
   let message: string;

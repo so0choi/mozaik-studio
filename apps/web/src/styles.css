@@ -385,7 +385,7 @@ h2.sect{font-size:15px;font-weight:800;padding:var(--s2) 2px 0}
 }
 
 /* effect controls */
-.fx{display:flex;flex-direction:column;gap:var(--s2)}
+.fxctl{display:flex;flex-direction:column;gap:var(--s2)}
 .fxstate{font-size:12px;font-weight:700;color:var(--muted)}
 .fxnote{font-size:12px;line-height:1.5;color:var(--warn-ink);background:var(--warn-bg);border-radius:var(--r-s);padding:var(--s2) var(--s3)}
 .fxrow{display:flex;flex-direction:column;gap:var(--s1)}
@@ -395,7 +395,7 @@ h2.sect{font-size:15px;font-weight:800;padding:var(--s2) 2px 0}
 .fxslide input{width:100%;accent-color:var(--primary)}
 .fxcolor{flex-direction:row;align-items:center;gap:var(--s2)}
 .fxcolor input{width:40px;height:30px;padding:0;border:1px solid var(--line);border-radius:var(--r-s);background:none}
-.fx .resetbtn{align-self:flex-start}
+.fxctl .resetbtn{align-self:flex-start}
 .rtag .own{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-left:5px;vertical-align:middle}
 .uncover{width:100%;height:34px;border-radius:var(--r-s);border:1px solid var(--warn);background:var(--warn-bg);color:var(--warn-ink);font-size:13px;font-weight:800}
 .uncover[aria-pressed="true"]{background:var(--warn);color:#1F2330}

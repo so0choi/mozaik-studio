@@ -39,7 +39,7 @@ describe('scaleRegions', () => {
     expect(scaleRegions([reg([0, 0, 640, 360], 128)], 640, 360, 80, 45)[0].block).toBe(16);
     expect(out[1].block).toBe(4);
   });
-  it('never shrinks a box below the scaled area and keeps effect, shape and scaled points', () => {
+  it('never shrinks a box below the scaled area, keeps the effect and draws shaped regions as rects', () => {
     const eff = { type: 'blur' as const, strength: 3, color: '#112233' };
     const [o] = scaleRegions(
       [reg([101, 51, 3, 3], 8, { shape: 'polygon', effect: eff, points: [[101, 51], [104, 51], [102, 54]] })],
@@ -49,8 +49,12 @@ describe('scaleRegions', () => {
     expect(o.box[0] + o.box[2]).toBeGreaterThanOrEqual(104 / 8);
     expect(o.box[2]).toBeGreaterThanOrEqual(1);
     expect(o.effect).toEqual(eff);
-    expect(o.shape).toBe('polygon');
-    expect(o.points).toEqual([[13, 6], [13, 6], [13, 7]]);
+    expect(o.shape).toBe('rect');
+    expect(o.points).toBeNull();
+    const [e] = scaleRegions([reg([100, 50, 40, 30], 8, { shape: 'ellipse' })], 640, 360, 80, 45);
+    expect(e.shape).toBe('rect');
+    expect(e.points).toBeNull();
+    expect(e.box).toEqual([12, 6, 6, 4]); // 12.5..17.5 x 6.25..10 grows outward
   });
   it('does not mutate its input', () => {
     const regions = [reg([10, 10, 10, 10], 4)];

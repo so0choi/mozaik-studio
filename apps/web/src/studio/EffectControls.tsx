@@ -101,7 +101,7 @@ function EffectControlsInner(p: Props) {
     p.onChange({ type, strength: base?.strength ?? 1, color: base?.color ?? DEFAULT_COLOR });
   };
   return (
-    <div className="fx" data-effect-control>
+    <div className="fxctl" data-effect-control>
       <div className="seg" role="group" aria-label={p.label}>
         {p.onOff && (
           <button type="button" className={!shown ? 'on' : undefined} aria-pressed={!shown} data-effect-control onClick={() => shown && p.onOff!()}>

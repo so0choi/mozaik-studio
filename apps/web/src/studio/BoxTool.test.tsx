@@ -191,6 +191,17 @@ describe('BoxTool polygon', () => {
   });
 });
 
+describe('BoxTool polygon bounds', () => {
+  it('a polygon touching the right and bottom frame edges keeps its full extent (points reach 0 and 1)', () => {
+    const { tool, onConfirm } = setup({ shape: 'polygon' });
+    click(tool, 600, 340);
+    click(tool, 640, 340);
+    click(tool, 640, 360);
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onConfirm).toHaveBeenCalledWith([600, 340, 40, 20], [[0, 0], [1, 0], [1, 1]]);
+  });
+});
+
 describe('BoxTool redraw of an existing polygon', () => {
   it('keeps the points and only changes the box', () => {
     const pts: [number, number][] = [[0, 0], [1, 0.5], [0.25, 1]];
