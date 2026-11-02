@@ -227,6 +227,9 @@ ffmpeg stdin <- out                          # 3. 이후 기존과 같음
 - `effects.*.type`이 `mosaic|blur|color` 밖, `"none"` 포함.
 - `strength`가 1–5 정수가 아님, `color`가 `#rrggbb`가 아님.
 - `overrides` 키가 트랙·그룹·분할 조각·수동 id 어디에도 없음.
+- 수동 앵커 박스가 |x|, |y| ≤ 16384, 1 ≤ w, h ≤ 16384 정수를 벗어남, 수동 항목당 앵커 500개 초과.
+- 다각형 점이 256개 초과, 단위 좌표 shoelace 넓이가 0(일직선·같은 점).
+- 그룹 id 또는 override 키가 `__proto__`, `constructor`, `prototype`.
 - `shape`가 `rect|ellipse|polygon` 밖, `polygon`인데 `points`가 없거나 3개 미만이거나 좌표가 [0,1] 밖, `polygon`이 아닌데 `points`가 있음.
 
 누락 필드는 기본값(§3.1)으로 읽는다. 기존 로컬 테스트 job의 edits.json은 그대로 열린다.

@@ -20,14 +20,36 @@ const isEffect = (v: unknown): boolean => {
   return true;
 };
 const isUnit = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
-const isPoints = (v: unknown): boolean =>
-  Array.isArray(v) && v.length >= 3 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every(isUnit));
+const MAX_POINTS = 256;
+const MAX_ANCHORS = 500;
+const COORD_MAX = 16384;
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const MIN_UNIT_AREA = 1e-9; // below this the polygon is a line/point (float noise on collinear input)
+const isPoints = (v: unknown): boolean => {
+  if (!Array.isArray(v) || v.length < 3 || v.length > MAX_POINTS) return false;
+  if (!v.every((p) => Array.isArray(p) && p.length === 2 && p.every(isUnit))) return false;
+  let a = 0;
+  for (let i = 0; i < v.length; i++) {
+    const [x1, y1] = v[i];
+    const [x2, y2] = v[(i + 1) % v.length];
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a) / 2 >= MIN_UNIT_AREA;
+};
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200;
 const isStrArr = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr);
 const isBox = (v: unknown): boolean =>
-  Array.isArray(v) && v.length === 4 && v.every(isInt) && v[2] > 0 && v[3] > 0;
+  Array.isArray(v) &&
+  v.length === 4 &&
+  v.every(isInt) &&
+  Math.abs(v[0]) <= COORD_MAX &&
+  Math.abs(v[1]) <= COORD_MAX &&
+  v[2] >= 1 &&
+  v[2] <= COORD_MAX &&
+  v[3] >= 1 &&
+  v[3] <= COORD_MAX;
 
 export function isValidBox(v: unknown) {
   return isBox(v);
@@ -54,6 +76,7 @@ export function validateEdits(
   }
   for (const g of e.groups) {
     if (!g || !isStr(g.id) || !isStrArr(g.trackIds) || typeof g.label !== 'string' || g.label.length > 200) return bad;
+    if (RESERVED_KEYS.has(g.id)) return bad;
     for (const t of g.trackIds) if (!known.has(t)) return `알 수 없는 트랙입니다: ${t}`;
   }
   for (const t of e.visible) if (!known.has(t)) return `알 수 없는 트랙입니다: ${t}`;
@@ -61,7 +84,7 @@ export function validateEdits(
 
   for (const m of e.manual) {
     if (!m || typeof m.id !== 'string' || !MANUAL_ID_RE.test(m.id)) return bad;
-    if (!Array.isArray(m.anchors)) return bad;
+    if (!Array.isArray(m.anchors) || m.anchors.length > MAX_ANCHORS) return bad;
     for (const a of m.anchors) {
       if (!a || !isInt(a.frame) || a.frame < 0 || !isBox(a.box)) return bad;
     }
@@ -83,6 +106,7 @@ export function validateEdits(
       for (const g of e.groups) targets.add(g.id);
       for (const m of e.manual) targets.add(m.id);
       for (const [key, val] of Object.entries(fx.overrides)) {
+        if (RESERVED_KEYS.has(key)) return bad;
         if (!targets.has(key)) return `알 수 없는 대상입니다: ${key}`;
         if (!isEffect(val)) return bad;
       }
