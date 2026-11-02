@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dilateBitmap, drawFrameEffects, maskAlpha, previewDilation, resetFilterSupportCache, supportsCanvasFilter, type PixelSource } from './effects';
+import { drawFrameEffects, maskAlpha, resetFilterSupportCache, supportsCanvasFilter, type PixelSource } from './effects';
 import { regionSigma } from './effectParams';
 import { shapeBitmap } from './shapes';
 import type { Effect, Region } from './types';
@@ -180,7 +180,7 @@ describe('regions', () => {
     const r = region({ shape: 'ellipse', box: [100, 100, 41, 31] });
     run([r]);
     expect(putData).toHaveLength(1);
-    const bm = dilateBitmap(shapeBitmap('ellipse', 41, 31, null), 41, 31, previewDilation(640, 320));
+    const bm = shapeBitmap('ellipse', 41, 31, null);
     expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(Array.from(bm, (v) => (v ? 255 : 0)));
     const di = calls.find((c) => c.canvas === 'off' && c.fn === 'drawImage' && c.op === 'destination-in');
     expect(di).toBeDefined();
@@ -192,8 +192,45 @@ describe('regions', () => {
   it('polygon points are made relative to the box origin', () => {
     const pts: [number, number][] = [[110, 105], [150, 105], [130, 140]];
     run([region({ shape: 'polygon', box: [100, 100, 64, 48], points: pts })]);
-    const bm = dilateBitmap(shapeBitmap('polygon', 64, 48, [[10, 5], [50, 5], [30, 40]]), 64, 48, previewDilation(640, 320));
+    const bm = shapeBitmap('polygon', 64, 48, [[10, 5], [50, 5], [30, 40]]);
     expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(Array.from(bm, (v) => (v ? 255 : 0)));
+  });
+
+  it('a box partly outside the frame sizes the offscreen to the visible window and keeps the grid origin', () => {
+    // box 100x80 at (-30, 300) in a 640x360 frame: visible window x 0..70, y 300..360 -> 70x60
+    run([region({ box: [-30, 300, 100, 80], block: 8 })]);
+    expect(off.width).toBe(70);
+    expect(off.height).toBe(60);
+    // mosaic source: first visible cell is floor(30/8)=3 -> source x = -30 + 24 = -6, y = 300
+    const first = calls.find((c) => c.canvas === 'off' && c.fn === 'drawImage')!;
+    expect(first.args.slice(1, 3)).toEqual([-6, 300]);
+    const final = calls.find((c) => c.canvas === 'main' && c.fn === 'drawImage')!;
+    expect(final.args.slice(1, 5)).toEqual([0, 0, 70, 60]);
+  });
+
+  it('a shaped box partly outside is cropped from the full-box bitmap', () => {
+    const r = region({ shape: 'ellipse', box: [-20, -10, 60, 40] });
+    run([r]);
+    const full = shapeBitmap('ellipse', 60, 40, null);
+    const want: number[] = [];
+    for (let j = 10; j < 40; j++) for (let i = 20; i < 60; i++) want.push(full[j * 60 + i] ? 255 : 0);
+    expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(want);
+  });
+
+  it('an oversized shaped box takes the grey path and a box outside the frame too', () => {
+    run([region({ shape: 'ellipse', box: [0, 0, 5000, 5000] })]);
+    expect(calls.some((c) => c.canvas === 'main' && c.fn === 'fillRect' && c.args.length === 4)).toBe(true);
+    expect(putData).toHaveLength(0);
+    calls = [];
+    run([region({ box: [700, 10, 20, 20] })]);
+    expect(calls.some((c) => c.canvas === 'main' && c.fn === 'fillRect')).toBe(true);
+  });
+
+  it('a failed canvas allocation takes the grey path', () => {
+    Object.defineProperty(off, 'width', { get: () => 1, set: () => {}, configurable: true });
+    run([region()]);
+    expect(calls.some((c) => c.canvas === 'main' && c.fn === 'fillRect')).toBe(true);
+    expect(calls.some((c) => c.canvas === 'main' && c.fn === 'drawImage')).toBe(false);
   });
 
   it('scales to display without smoothing', () => {
@@ -210,53 +247,19 @@ describe('maskAlpha', () => {
   });
 });
 
-describe('dilateBitmap', () => {
-  it('d = 1 is the identity', () => {
-    const bm = new Uint8Array([0, 1, 0, 0, 0, 0]);
-    expect(Array.from(dilateBitmap(bm, 3, 2, 1))).toEqual(Array.from(bm));
-  });
-
-  it('d grows the set by d - 1 pixels (square) and stays inside the box', () => {
-    const bm = new Uint8Array(25);
-    bm[12] = 1; // centre of 5x5
-    expect(Array.from(dilateBitmap(bm, 5, 5, 3)).every((v) => v === 1)).toBe(true);
-    const one = dilateBitmap(bm, 5, 5, 2);
-    expect(one.reduce((x, y) => x + y, 0)).toBe(9);
-    const corner = new Uint8Array(9);
-    corner[0] = 1;
-    expect(Array.from(dilateBitmap(corner, 3, 3, 2))).toEqual([1, 1, 0, 1, 1, 0, 0, 0, 0]);
-  });
-
-  it('previewDilation = ceil(source px per display px), at least 1', () => {
-    expect(previewDilation(1920, 800)).toBe(3);
-    expect(previewDilation(1920, 1920)).toBe(1);
-    expect(previewDilation(640, 1280)).toBe(1);
-  });
-
-  it('a downscaled preview mask is a superset of the render bitmap', () => {
-    const pts: [number, number][] = [[2, 2], [38, 5], [20, 30]];
-    for (const shape of ['ellipse', 'polygon'] as const) {
-      const bm = shapeBitmap(shape, 40, 32, shape === 'polygon' ? pts : null);
-      const dil = dilateBitmap(bm, 40, 32, previewDilation(1920, 800));
-      for (let i = 0; i < bm.length; i++) if (bm[i]) expect(dil[i]).toBe(1);
-      expect(dil.reduce((a, b) => a + b, 0)).toBeGreaterThan(bm.reduce((a, b) => a + b, 0));
-    }
-  });
-});
-
 describe('supportsCanvasFilter', () => {
   it('true when the pixel probe sees a blurred neighbour; cached; reset hook re-probes', () => {
-    expect(supportsCanvasFilter(ctx)).toBe(true);
+    expect(supportsCanvasFilter()).toBe(true);
     filterSupported = false;
-    expect(supportsCanvasFilter(ctx)).toBe(true); // cached
+    expect(supportsCanvasFilter()).toBe(true); // cached
     resetFilterSupportCache();
-    expect(supportsCanvasFilter(ctx)).toBe(false);
+    expect(supportsCanvasFilter()).toBe(false);
   });
 
   it('false for an expando filter property: assignment reads back but nothing blurs', () => {
     filterSupported = false; // probe pixels stay transparent
     (ctx as unknown as { filter: string }).filter = 'blur(1px)';
-    expect(supportsCanvasFilter(ctx)).toBe(false);
+    expect(supportsCanvasFilter()).toBe(false);
   });
 
   it('false when the context prototype has no filter accessor', () => {
@@ -264,7 +267,7 @@ describe('supportsCanvasFilter', () => {
     Object.defineProperty(CanvasRenderingContext2D.prototype, 'fill', { value: 1 });
     // fresh class: no 'filter'
     resetFilterSupportCache();
-    expect(supportsCanvasFilter(ctx)).toBe(false);
+    expect(supportsCanvasFilter()).toBe(false);
     expect(calls.length).toBe(0);
   });
 
@@ -272,7 +275,7 @@ describe('supportsCanvasFilter', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
       throw new Error('x');
     });
-    expect(supportsCanvasFilter(ctx)).toBe(false);
+    expect(supportsCanvasFilter()).toBe(false);
   });
 });
 

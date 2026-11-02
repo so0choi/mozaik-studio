@@ -33,7 +33,7 @@ def normalize_effects(edits: dict) -> dict:
     overrides = fx.get("overrides") or {}
     return {
         "default": normalize_effect(fx.get("default")),
-        "background": normalize_effect(bg) if isinstance(bg, dict) else None,
+        "background": normalize_effect(bg) if isinstance(bg, dict) and bg else None,
         "overrides": {k: normalize_effect(v) for k, v in overrides.items()},
     }
 

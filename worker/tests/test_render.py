@@ -388,3 +388,8 @@ def test_normalize_effects_background_only_when_dict():
     mk = lambda bg: normalize_effects({"effects": {"background": bg}})["background"]
     assert mk("blur") is None and mk(1) is None and mk([1]) is None and mk(None) is None
     assert mk({"type": "blur", "strength": 2})["type"] == "blur"
+
+
+def test_normalize_effects_empty_dict_background_is_none_like_the_web():
+    from mosaic_worker.effects import normalize_effects
+    assert normalize_effects({"effects": {"background": {}}})["background"] is None
