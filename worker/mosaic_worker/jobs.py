@@ -7,6 +7,7 @@ from typing import Callable
 import cv2
 
 from .detect import FaceDetector
+from .link import link_fragments
 from .normalize import Meta, find_original, normalize
 from .review import build_review
 from .status import MSG_ANALYZE_FAILED, UserFacingError, atomic_write_json
@@ -18,6 +19,11 @@ from .verify import TrackVerifier
 Progress = Callable[[str, int], None]
 
 RENDER_CONFIG = {"expandRatio": 0.25, "blockDivisor": 8, "minBlock": 8, "gapHoldSec": 0.5}
+
+
+def linked_suspects(groups: dict[str, list[str]], part_suspects: set[str]) -> set[str]:
+    """A linked track is suspect only if all of its parts are."""
+    return {kept for kept, parts in groups.items() if all(p in part_suspects for p in parts)}
 
 
 def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: Progress | None = None):
@@ -48,9 +54,11 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
                     progress("analyzing", pct)
     finally:
         cap.release()
-    tracks = tracker.finish()
+    tracks, groups = link_fragments(tracker.finish(), meta.fps, scene.cuts)
     # Only a hint for the reviewer: suspect tracks stay masked like every other track.
-    suspects = {t.id for t in tracks if not verifier.keep(t.id)}
+    part_suspects = {p for parts in groups.values() for p in parts if not verifier.keep(p)}
+    suspects = linked_suspects(groups, part_suspects)
+    thumbs.merge(groups)
     return tracks, thumbs, suspects, scene.cuts
 
 

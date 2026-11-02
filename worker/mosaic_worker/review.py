@@ -28,6 +28,23 @@ def _union(boxes):
     return [int(x0), int(y0), int(x1 - x0), int(y1 - y0)]
 
 
+def _crossing_boxes(track: Track) -> dict[int, tuple]:
+    """Boxes for crossing checks. A held box grows to keep a lost face masked; that growth is
+    not evidence two people met, so it keeps its centre but the size of the last real box."""
+    out: dict[int, tuple] = {}
+    last_real = None
+    for f in sorted(track.frames):
+        box = track.frames[f]
+        if f in track.held or f not in track.scores:
+            if last_real is not None:
+                cx, cy = box[0] + box[2] / 2, box[1] + box[3] / 2
+                box = (cx - last_real[2] / 2, cy - last_real[3] / 2, last_real[2], last_real[3])
+        else:
+            last_real = box
+        out[f] = box
+    return out
+
+
 def _low_confidence(track: Track) -> list[tuple[int, int]]:
     real = sorted(f for f in track.scores if f in track.frames and f not in track.held)
     n = LOW_MIN_FRAMES
@@ -80,7 +97,7 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
 
     per_frame: dict[int, list[tuple[str, tuple]]] = {}
     for t in tracks:
-        for f, box in t.frames.items():
+        for f, box in _crossing_boxes(t).items():
             per_frame.setdefault(f, []).append((t.id, box))
     pair_frames: dict[tuple[str, str], list[int]] = {}
     for f, lst in per_frame.items():

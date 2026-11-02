@@ -54,6 +54,36 @@ class ThumbCollector:
                     self._samples.setdefault(tid, []).append(jpg)
                     self._last_sample[tid] = frame_idx
 
+    def merge(self, groups: dict[str, list[str]]) -> None:
+        """Re-key the entries of linked parts to the kept id ({kept_id: [part ids in time order]})."""
+        for kept, parts in groups.items():
+            if len(parts) < 2:
+                continue
+            bests = [self._best[p] for p in parts if p in self._best]
+            per_part = [self._samples.get(p, []) for p in parts]
+            flat = [s for lst in per_part for s in lst]
+            if len(flat) > MAX_SAMPLES:
+                forced, pos = [], 0
+                for lst in per_part:
+                    if lst:
+                        forced.append(pos)  # every part keeps its first sample
+                    pos += len(lst)
+                if len(forced) >= MAX_SAMPLES:
+                    pick = [forced[i] for i in np.linspace(0, len(forced) - 1, MAX_SAMPLES).round().astype(int)]
+                else:
+                    rest = [i for i in range(len(flat)) if i not in set(forced)]
+                    k = MAX_SAMPLES - len(forced)
+                    pick = forced + [rest[i] for i in np.linspace(0, len(rest) - 1, k).round().astype(int)]
+                flat = [flat[i] for i in sorted(set(pick))]
+            for p in parts:
+                self._best.pop(p, None)
+                self._samples.pop(p, None)
+                self._last_sample.pop(p, None)
+            if bests:
+                self._best[kept] = max(bests, key=lambda b: b[0])
+            if flat:
+                self._samples[kept] = flat
+
     def write(self, track_ids: list[str], job_dir: Path) -> dict[str, dict]:
         """Write jpgs under job_dir/thumbs; returns {trackId: {"thumb": rel, "samples": [rel]}}."""
         out_dir = Path(job_dir) / "thumbs"

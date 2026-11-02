@@ -108,3 +108,30 @@ def test_bridged_gap_is_kept_even_near_edge_or_cut():
     t = mk("t1", range(0, 30), box=(2, 150, 50, 50), held=range(10, 15))
     items = build_review([t], 30, frame_size=SIZE, frame_count=300, cuts={11})["items"]
     assert len(gaps(items)) == 1
+
+
+def test_grown_held_box_is_not_a_crossing():
+    # held box grew to 100 wide and now overlaps the neighbour; ungrown size does not
+    a = Track("t1", {f: (100, 100, 50, 50) for f in range(0, 10)}, {f: 0.9 for f in range(0, 10)}, set())
+    for f in range(10, 14):
+        a.frames[f] = (100 - 25, 100 - 25, 100, 100)
+        a.held.add(f)
+    b = mk("t2", range(0, 14), box=(165, 100, 50, 50))
+    items = build_review([a, b], 30, frame_size=(1000, 1000), frame_count=1000)["items"]
+    assert [i["type"] for i in items] == ["gap"]
+
+
+def test_two_real_boxes_still_cross():
+    a = mk("t1", range(0, 10), box=(100, 100, 50, 50))
+    b = mk("t2", range(0, 10), box=(120, 100, 50, 50))
+    assert [i["type"] for i in build_review([a, b], 30)["items"]] == ["crossing"]
+
+
+def test_held_box_with_ungrown_size_overlapping_still_crosses():
+    a = Track("t1", {f: (100, 100, 50, 50) for f in range(0, 10)}, {f: 0.9 for f in range(0, 10)}, set())
+    for f in range(10, 14):
+        a.frames[f] = (100 - 25, 100 - 25, 100, 100)
+        a.held.add(f)
+    b = mk("t2", range(10, 14), box=(130, 100, 50, 50))
+    types = [i["type"] for i in build_review([a, b], 30, frame_size=(1000, 1000), frame_count=1000)["items"]]
+    assert "crossing" in types
