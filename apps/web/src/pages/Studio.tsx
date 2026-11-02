@@ -38,6 +38,7 @@ import { TargetList } from '../studio/TargetList';
 import { VideoInfo } from '../studio/VideoInfo';
 import { PlayerOverlay, type Highlight } from '../studio/PlayerOverlay';
 import { requiredItems } from '../lib/reviewRequired';
+import { bulkConfirmable, confirmGroupEdits, groupItems, groupOf } from '../lib/reviewGroups';
 import { ReviewCard, ReviewUpcoming, optionCount, type ReviewStage } from '../studio/ReviewCard';
 import { Timeline } from '../studio/Timeline';
 import { Header } from './Header';
@@ -252,7 +253,12 @@ export function Studio() {
   const background = useMemo(() => normalizeEffects(edits).background, [edits]);
   const reviewed = useMemo(() => new Set(edits.reviewed), [edits.reviewed]);
   // only items that can still expose a face given the current visibility edits (same rule as the API)
-  const unresolved = useMemo(() => requiredItems(reviewItems, edits), [reviewItems, edits]);
+  const required = useMemo(() => requiredItems(reviewItems, edits), [reviewItems, edits]);
+  const suspectIds = useMemo(() => new Set((tracks?.tracks ?? []).filter((t) => t.suspect === true).map((t) => t.id)), [tracks]);
+  const isSuspect = useCallback((item: ReviewItem) => item.trackIds.length > 0 && item.trackIds.every((t) => suspectIds.has(t)), [suspectIds]);
+  // 5-second windows; the queue walks them group by group (suspect-only items last inside a window)
+  const groups = useMemo(() => groupItems(required, tracks?.fps ?? 30, isSuspect), [required, tracks, isSuspect]);
+  const unresolved = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const hiddenCount = reviewItems.length - unresolved.length - reviewItems.filter((i) => reviewed.has(i.id)).length;
   const resolved = useMemo(() => reviewItems.filter((i) => reviewed.has(i.id)), [reviewItems, reviewed]);
   const current = peopleList.find((p) => p.key === currentKey) ?? null;
@@ -498,6 +504,24 @@ export function Studio() {
     },
     [advanceFrom, updateEdits],
   );
+  /** Mark the active window's non-crossing items reviewed in one undo step; visibility is never touched. */
+  const confirmGroup = useCallback(() => {
+    if (!activeItem) return;
+    const g = groupOf(groups, activeItem.id);
+    if (!g) return;
+    const confirmIds = new Set(g.items.filter(bulkConfirmable).map((i) => i.id));
+    if (confirmIds.size === 0) return;
+    const remaining = unresolved.filter((i) => !confirmIds.has(i.id));
+    const gi = groups.indexOf(g);
+    const nxt =
+      g.items.find((i) => !confirmIds.has(i.id)) ??
+      groups.slice(gi + 1).flatMap((x) => x.items)[0] ??
+      remaining[0];
+    updateEdits((e) => confirmGroupEdits(e, g));
+    setActiveId(nxt?.id ?? null);
+    setManualOpen(null);
+    if (nxt) seek(nxt.startFrame);
+  }, [activeItem, groups, unresolved, updateEdits, seek]);
   const stepItem = useCallback(
     (dir: 1 | -1) => {
       if (unresolved.length < 2 || !activeItem) return;
@@ -774,7 +798,10 @@ export function Studio() {
     switch (e.key) {
       case 'Enter':
         if (onControl || !canAct) return;
-        if (stage === 'ask') resolveItem(activeItem!.id);
+        if (e.shiftKey) {
+          if (stage === 'ask') confirmGroup();
+          else handled = false;
+        } else if (stage === 'ask') resolveItem(activeItem!.id);
         else if (stage === 'split' || stage === 'notface') resolveItem(activeItem!.id);
         else handled = false;
         break;
@@ -866,8 +893,19 @@ export function Studio() {
     );
   }
 
+  const activeGroup = activeItem ? groupOf(groups, activeItem.id) : null;
+  const activeGroupInfo = activeGroup
+    ? {
+        index: groups.indexOf(activeGroup) + 1,
+        total: groups.length,
+        size: activeGroup.items.length,
+        confirmable: activeGroup.items.filter(bulkConfirmable).length,
+        startFrame: activeGroup.startFrame,
+        endFrame: activeGroup.endFrame,
+      }
+    : undefined;
   const noteText = unresolved.length
-    ? `확인 필요 ${unresolved.length}건 남음`
+    ? `확인 필요 ${unresolved.length}건 · ${groups.length}구간 남음`
     : trackingCount
       ? '수동 영역 추적 중'
       : '모든 항목 확인됨';
@@ -944,11 +982,15 @@ export function Studio() {
                   onNext={() => stepItem(1)}
                   onTogglePerson={toggleVisible}
                   onSplitDone={() => activeItem && resolveItem(activeItem.id)}
+                  group={activeGroupInfo}
+                  onConfirmGroup={confirmGroup}
                 />
               )}
               <ReviewUpcoming
-                items={unresolved.filter((i) => i.id !== activeItem?.id)}
+                groups={groups.filter((g) => g !== activeGroup)}
+                totalGroups={groups.length}
                 total={unresolved.length}
+                isSuspect={isSuspect}
                 done={resolved}
                 hiddenCount={hiddenCount}
                 fps={fps}

@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import { formatTime } from '../lib/frames';
+import type { ReviewGroup } from '../lib/reviewGroups';
 import type { ManualState, Person, ReviewItem, ReviewType } from '../lib/types';
 
 export const TYPE_LABEL: Record<ReviewType, string> = {
@@ -50,6 +51,17 @@ interface CardProps {
   onNext: () => void;
   onTogglePerson: (key: string, visible: boolean) => void;
   onSplitDone: () => void;
+  group?: GroupInfo;
+  onConfirmGroup?: () => void;
+}
+
+export interface GroupInfo {
+  index: number;
+  total: number;
+  size: number;
+  confirmable: number;
+  startFrame: number;
+  endFrame: number;
 }
 
 function ReviewCardInner(p: CardProps) {
@@ -88,6 +100,19 @@ function ReviewCardInner(p: CardProps) {
           {range}
         </button>
       </div>
+      {p.group && (
+        <div className="grp" data-testid="group-header">
+          <div className="gh">
+            구간 {p.group.index}/{p.group.total} · {formatTime(p.group.startFrame / p.fps)}–{formatTime(p.group.endFrame / p.fps)} · {p.group.size}건
+          </div>
+          {p.onConfirmGroup && (
+            <button type="button" className="act gbtn" data-testid="confirm-group" disabled={p.group.confirmable === 0} onClick={p.onConfirmGroup}>
+              이 구간 모두 확인 ({p.group.confirmable}건) <kbd>Shift+Enter</kbd>
+            </button>
+          )}
+          {p.group.size > p.group.confirmable && <p className="gnote">교차 {p.group.size - p.group.confirmable}건은 따로 선택해야 합니다</p>}
+        </div>
+      )}
       <p className="expl">{EXPLAIN[item.type]}</p>
       {p.manualState === 'failed' && !tracking && <div className="trk fail">추적 실패 · 기준 프레임만 가려짐</div>}
 
@@ -163,35 +188,52 @@ function ReviewCardInner(p: CardProps) {
 export const ReviewCard = memo(ReviewCardInner);
 
 interface UpcomingProps {
-  items: ReviewItem[];
+  groups: ReviewGroup[];
+  totalGroups: number;
   total: number;
   done: ReviewItem[];
   hiddenCount: number;
   fps: number;
   whoOf: (item: ReviewItem) => string;
+  isSuspect: (item: ReviewItem) => boolean;
   onSelect: (id: string) => void;
 }
 
 const MAX_UPCOMING = 9;
+const TYPE_ORDER: ReviewType[] = ['low_confidence', 'gap', 'crossing'];
+const TYPE_SHORT: Record<ReviewType, string> = { low_confidence: '낮은 신뢰도', gap: '끊김', crossing: '교차' };
+
+function typeCounts(items: ReviewItem[]) {
+  return TYPE_ORDER.map((t) => [t, items.filter((i) => i.type === t).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([t, n]) => `${TYPE_SHORT[t]} ${n}`)
+    .join(' · ');
+}
 
 function ReviewUpcomingInner(p: UpcomingProps) {
   const [open, setOpen] = useState(false);
-  const shown = p.items.slice(0, MAX_UPCOMING);
+  const shown = p.groups.slice(0, MAX_UPCOMING);
   return (
     <section className="up-wrap" aria-label="다음 항목">
       <div className="uph">
-        <span>다음 항목 · 남은 {p.total}건</span>
+        <span>
+          다음 구간 · 남은 {p.totalGroups}구간 {p.total}건
+        </span>
       </div>
       <div className="up">
-        {shown.map((i) => (
-          <button type="button" key={i.id} className="ur" data-testid={`review-${i.id}`} onClick={() => p.onSelect(i.id)}>
-            <span className={`tg tag ${TAG_CLASS[i.type]}`}>{TYPE_LABEL[i.type]}</span>
-            <span className="pn">{p.whoOf(i)}</span>
-            <span className="t">{formatTime(i.startFrame / p.fps)}</span>
+        {shown.map((g) => (
+          <button type="button" key={g.key} className="ur grow" data-testid={`review-group-${g.key}`} onClick={() => p.onSelect(g.items[0].id)}>
+            <span className="t">
+              {formatTime(g.startFrame / p.fps)}–{formatTime(g.endFrame / p.fps)}
+            </span>
+            <span className="pn">
+              {g.items.length}건 · {typeCounts(g.items)}
+            </span>
+            {g.items.every(p.isSuspect) && <span className="sus">얼굴 아닐 수 있음</span>}
           </button>
         ))}
-        {p.items.length > MAX_UPCOMING && <div className="more">외 {p.items.length - MAX_UPCOMING}건</div>}
-        {p.items.length === 0 && <div className="more">다음 항목이 없습니다.</div>}
+        {p.groups.length > MAX_UPCOMING && <div className="more">외 {p.groups.length - MAX_UPCOMING}구간</div>}
+        {p.groups.length === 0 && <div className="more">다음 구간이 없습니다.</div>}
       </div>
       {p.hiddenCount > 0 && (
         <p className="hidden-note" data-testid="hidden-note">

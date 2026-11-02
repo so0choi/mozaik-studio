@@ -173,7 +173,7 @@ describe('Studio review and render', () => {
     await card('t1');
     const renderBtn = screen.getByRole('button', { name: '렌더 후 다운로드' });
     expect(renderBtn).toBeDisabled();
-    expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 1건 남음');
+    expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 1건 · 1구간 남음');
     await userEvent.click(screen.getByRole('button', { name: /괜찮음/ }));
     expect(screen.getByTestId('note')).toHaveTextContent('모든 항목 확인됨');
     expect(renderBtn).toBeEnabled();
@@ -182,15 +182,16 @@ describe('Studio review and render', () => {
   });
 
   it('clicking an upcoming item seeks the video to startFrame/fps', async () => {
-    setup({ review: twoItems });
+    // r2 sits in a later 5s window so it shows as an upcoming group row
+    setup({ tracks: { ...tracksDoc, frameCount: 600 }, review: { items: [twoItems.items[0], { ...twoItems.items[1], startFrame: 300 }] } });
     await card('t1');
-    await userEvent.click(screen.getByTestId('review-r2'));
+    await userEvent.click(screen.getByTestId('review-group-2'));
     const video = screen.getByLabelText('미리보기 영상') as HTMLVideoElement;
-    expect(video.currentTime).toBeCloseTo(60 / 30);
-    expect(screen.getByTestId('time')).toHaveTextContent('00:02');
-    // r2 is now the active card; r1 moved to the upcoming list
+    expect(video.currentTime).toBeCloseTo(300 / 30);
+    expect(screen.getByTestId('time')).toHaveTextContent('00:10');
+    // r2 is now the active card; r1's window moved to the upcoming list
     expect(screen.getByTestId('review-r2').tagName).toBe('SECTION');
-    expect(screen.getByTestId('review-r1').tagName).toBe('BUTTON');
+    expect(screen.getByTestId('review-group-0').tagName).toBe('BUTTON');
   });
 
   it('the card time range button seeks to the item start', async () => {
@@ -252,13 +253,36 @@ describe('Studio required review items', () => {
 
     await toggle('t1', '인물 1');
     expect(await screen.findByTestId('review-r9')).toBeInTheDocument();
-    expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 1건 남음');
+    expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 1건 · 1구간 남음');
     expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeDisabled();
     expect(screen.queryByTestId('hidden-note')).toBeNull();
 
     await toggle('t2', '인물 2');
     await waitFor(() => expect(screen.queryByTestId('review-r9')).toBeNull());
     expect(screen.getByTestId('hidden-note')).toBeInTheDocument();
+  });
+});
+
+describe('Studio group confirm', () => {
+  const mixed = {
+    items: [
+      { id: 'g1', type: 'gap', trackIds: ['t3'], startFrame: 30, endFrame: 45, box: [500, 50, 48, 64] },
+      { id: 'g2', type: 'low_confidence', trackIds: ['t2'], startFrame: 60, endFrame: 70, box: [100, 100, 60, 60] },
+      { id: 'gx', type: 'crossing', trackIds: ['t1', 't2'], startFrame: 80, endFrame: 90, box: [1, 1, 2, 2] },
+      { id: 'g4', type: 'gap', trackIds: ['t3'], startFrame: 400, endFrame: 410, box: [500, 50, 48, 64] },
+    ],
+  };
+  it('Shift+Enter confirms only non-crossing items of the active window and never changes visible', async () => {
+    const calls = setup({ review: mixed, edits: { ...emptyEdits, visible: ['t1'] } });
+    await card('t1');
+    expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 4건 · 2구간 남음');
+    await userEvent.keyboard('{Shift>}{Enter}{/Shift}');
+    await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
+    const body = puts(calls)[0].body as Edits;
+    expect(body.reviewed.sort()).toEqual(['g1', 'g2']);
+    expect(body.visible).toEqual(['t1']);
+    expect(screen.getByTestId('review-gx').tagName).toBe('SECTION');
+    expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 2건 · 2구간 남음');
   });
 });
 
