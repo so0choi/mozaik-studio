@@ -13,8 +13,8 @@ export interface PixelSource {
 }
 
 const GREY = '#6b6f7a';
-/** A shaped box above this many pixels is not rasterized for the preview (grey fallback). */
-const MAX_SHAPE_PIXELS = 4096 * 4096;
+/** A frame-visible window above this many pixels is not drawn for the preview (grey fallback). */
+const MAX_WINDOW_PIXELS = 8192 * 8192;
 
 let filterSupport: boolean | null = null;
 
@@ -197,7 +197,7 @@ function drawRegion(
   const ww = wx1 - wx0;
   const wh = wy1 - wy0;
   if (!(ww > 0) || !(wh > 0)) throw new Error('region outside the frame');
-  if (r.shape !== 'rect' && w * h > MAX_SHAPE_PIXELS) throw new Error('region too large');
+  if (ww * wh > MAX_WINDOW_PIXELS) throw new Error('region window too large');
   const ox0 = wx0 - x; // window origin inside the box
   const oy0 = wy0 - y;
   const vx = src.width / srcW;
@@ -239,15 +239,10 @@ function drawRegion(
     octx.fillRect(0, 0, ww, wh);
   }
 
-  // (3) shape alpha, strictly 0 / 255 (the same bitmap as the render, cropped to the window)
+  // (3) shape alpha, strictly 0 / 255 (the same window bitmap as the render)
   if (r.shape !== 'rect') {
     const pts = r.points ? r.points.map(([px, py]): [number, number] => [px - x, py - y]) : null;
-    const full = shapeBitmap(r.shape, w, h, pts);
-    let bm = full;
-    if (ww !== w || wh !== h) {
-      bm = new Uint8Array(ww * wh);
-      for (let j = 0; j < wh; j++) bm.set(full.subarray((j + oy0) * w + ox0, (j + oy0) * w + ox0 + ww), j * ww);
-    }
+    const bm = shapeBitmap(r.shape, w, h, pts, [ox0, oy0, ox0 + ww, oy0 + wh]);
     const mask = maskCanvasFor(off);
     mask.width = ww;
     mask.height = wh;
@@ -294,8 +289,17 @@ export function drawFrameEffects(
 ): void {
   const grey = (r: Region) => {
     const [ox, oy, ow, oh] = outward(r.box, rect, srcW, srcH);
-    ctx.fillStyle = GREY;
-    ctx.fillRect(ox, oy, ow, oh);
+    const wr = outwardRect(rect);
+    ctx.save();
+    try {
+      ctx.beginPath(); // an off-frame region must never paint into the letterbox
+      ctx.rect(wr.x, wr.y, wr.w, wr.h);
+      ctx.clip();
+      ctx.fillStyle = GREY;
+      ctx.fillRect(ox, oy, ow, oh);
+    } finally {
+      ctx.restore();
+    }
   };
   const octx = off.getContext('2d');
   if (!octx || !src.ready || !src.width || !src.height) {

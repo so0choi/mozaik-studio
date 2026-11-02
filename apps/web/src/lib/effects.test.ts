@@ -208,22 +208,47 @@ describe('regions', () => {
     expect(final.args.slice(1, 5)).toEqual([0, 0, 70, 60]);
   });
 
-  it('a shaped box partly outside is cropped from the full-box bitmap', () => {
+  it('a shaped box partly outside is rasterized on the visible window', () => {
     const r = region({ shape: 'ellipse', box: [-20, -10, 60, 40] });
     run([r]);
-    const full = shapeBitmap('ellipse', 60, 40, null);
-    const want: number[] = [];
-    for (let j = 10; j < 40; j++) for (let i = 20; i < 60; i++) want.push(full[j * 60 + i] ? 255 : 0);
+    const want = Array.from(shapeBitmap('ellipse', 60, 40, null, [20, 10, 60, 40]), (v) => (v ? 255 : 0));
     expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(want);
   });
 
-  it('an oversized shaped box takes the grey path and a box outside the frame too', () => {
+  it('a full-frame ellipse box far larger than the frame rasterizes only the visible window', () => {
     run([region({ shape: 'ellipse', box: [0, 0, 5000, 5000] })]);
+    expect(putData).toHaveLength(1);
+    const want = shapeBitmap('ellipse', 5000, 5000, null, [0, 0, 640, 360]);
+    expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(Array.from(want, (v) => (v ? 255 : 0)));
+    expect(calls.some((c) => c.canvas === 'main' && c.fn === 'fillRect')).toBe(false);
+  });
+
+  it('a polygon partly off-frame uses the bitmap evaluated on the visible window (same as the worker)', () => {
+    const pts: [number, number][] = [[-10, -10], [60, -10], [-10, 40]];
+    run([region({ shape: 'polygon', box: [-20, -20, 100, 60], points: pts })]);
+    const rel = pts.map(([px, py]): [number, number] => [px + 20, py + 20]);
+    const want = shapeBitmap('polygon', 100, 60, rel, [20, 20, 100, 60]);
+    expect(Array.from(putData[0].filter((_, i) => i % 4 === 3))).toEqual(Array.from(want, (v) => (v ? 255 : 0)));
+  });
+
+  it('only a window beyond the cap, or a box outside the frame, takes the grey path', () => {
+    const big: PixelSource = { image: {} as CanvasImageSource, width: 10000, height: 10000, ready: true };
+    drawFrameEffects(ctx, big, off, [region({ shape: 'ellipse', box: [0, 0, 10000, 10000] })], null, rect, 10000, 10000);
     expect(calls.some((c) => c.canvas === 'main' && c.fn === 'fillRect' && c.args.length === 4)).toBe(true);
     expect(putData).toHaveLength(0);
     calls = [];
     run([region({ box: [700, 10, 20, 20] })]);
     expect(calls.some((c) => c.canvas === 'main' && c.fn === 'fillRect')).toBe(true);
+  });
+
+  it('a grey fallback for a region partly off-frame is clipped to the content rect', () => {
+    run([region({ box: [-200, 100, 300, 50] })], null, notReady);
+    const i = idx((c) => c.canvas === 'main' && c.fn === 'fillRect');
+    expect(i).toBeGreaterThan(-1);
+    const clipRect = calls.slice(0, i).filter((c) => c.fn === 'rect').pop()!;
+    expect(clipRect.args).toEqual([10, 20, 320, 180]);
+    expect(calls.slice(0, i).some((c) => c.fn === 'clip')).toBe(true);
+    expect(calls.slice(i).some((c) => c.fn === 'restore')).toBe(true);
   });
 
   it('a failed canvas allocation takes the grey path', () => {

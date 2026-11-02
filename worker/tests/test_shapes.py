@@ -16,7 +16,7 @@ def test_matches_shared_shape_masks():
     cases = json.loads((FIXTURES / "shape-masks.json").read_text())
     assert len(cases) >= 5
     for c in cases:
-        bm = shape_bitmap(c["shape"], c["w"], c["h"], c["points"])
+        bm = shape_bitmap(c["shape"], c["w"], c["h"], c["points"], tuple(c["window"]) if c.get("window") else None)
         assert _rows(bm) == c["rows"], c["name"]
 
 
