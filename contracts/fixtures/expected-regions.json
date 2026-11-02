@@ -1,0 +1,162 @@
+{
+ "_comment": "regions after applying edits.sample.json + manual.sample.json to tracks.sample.json; frames 0..60 all have regions (t2a 0-44, t3 30-59, m1 44-46, m3 60), frame 89 has none and is absent; sorted by (x,y)",
+ "0": [
+  {
+   "id": "t2a",
+   "shape": "rect",
+   "box": [
+    300,
+    120,
+    80,
+    80
+   ],
+   "points": null,
+   "effect": {
+    "type": "mosaic",
+    "strength": 1,
+    "color": "#000000"
+   },
+   "block": 10
+  }
+ ],
+ "44": [
+  {
+   "id": "m1",
+   "shape": "ellipse",
+   "box": [
+    200,
+    200,
+    40,
+    40
+   ],
+   "points": null,
+   "effect": {
+    "type": "color",
+    "strength": 1,
+    "color": "#ff0000"
+   },
+   "block": 8
+  },
+  {
+   "id": "t2a",
+   "shape": "rect",
+   "box": [
+    300,
+    120,
+    80,
+    80
+   ],
+   "points": null,
+   "effect": {
+    "type": "mosaic",
+    "strength": 1,
+    "color": "#000000"
+   },
+   "block": 10
+  },
+  {
+   "id": "t3",
+   "shape": "rect",
+   "box": [
+    500,
+    50,
+    48,
+    64
+   ],
+   "points": null,
+   "effect": {
+    "type": "blur",
+    "strength": 3,
+    "color": "#000000"
+   },
+   "block": 8
+  }
+ ],
+ "45": [
+  {
+   "id": "m1",
+   "shape": "ellipse",
+   "box": [
+    200,
+    200,
+    40,
+    40
+   ],
+   "points": null,
+   "effect": {
+    "type": "color",
+    "strength": 1,
+    "color": "#ff0000"
+   },
+   "block": 8
+  },
+  {
+   "id": "t3",
+   "shape": "rect",
+   "box": [
+    500,
+    50,
+    48,
+    64
+   ],
+   "points": null,
+   "effect": {
+    "type": "blur",
+    "strength": 3,
+    "color": "#000000"
+   },
+   "block": 8
+  }
+ ],
+ "47": [
+  {
+   "id": "t3",
+   "shape": "rect",
+   "box": [
+    500,
+    50,
+    48,
+    64
+   ],
+   "points": null,
+   "effect": {
+    "type": "blur",
+    "strength": 3,
+    "color": "#000000"
+   },
+   "block": 8
+  }
+ ],
+ "60": [
+  {
+   "id": "m3",
+   "shape": "polygon",
+   "box": [
+    100,
+    100,
+    60,
+    40
+   ],
+   "points": [
+    [
+     100,
+     100
+    ],
+    [
+     160,
+     100
+    ],
+    [
+     130,
+     140
+    ]
+   ],
+   "effect": {
+    "type": "mosaic",
+    "strength": 1,
+    "color": "#000000"
+   },
+   "block": 8
+  }
+ ]
+}

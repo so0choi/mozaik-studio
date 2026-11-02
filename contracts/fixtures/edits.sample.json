@@ -29,7 +29,8 @@
     44,
     46
    ],
-   "deleted": false
+   "deleted": false,
+   "shape": "ellipse"
   },
   {
    "id": "m2",
@@ -46,7 +47,58 @@
    ],
    "trim": null,
    "deleted": true
+  },
+  {
+   "id": "m3",
+   "shape": "polygon",
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     0.5,
+     1
+    ]
+   ],
+   "anchors": [
+    {
+     "frame": 60,
+     "box": [
+      100,
+      100,
+      60,
+      40
+     ]
+    }
+   ],
+   "trim": null,
+   "deleted": false
   }
  ],
- "reviewed": []
+ "reviewed": [],
+ "effects": {
+  "default": {
+   "type": "mosaic",
+   "strength": 1
+  },
+  "background": {
+   "type": "blur",
+   "strength": 2
+  },
+  "overrides": {
+   "t3": {
+    "type": "blur",
+    "strength": 3
+   },
+   "m1": {
+    "type": "color",
+    "color": "#ff0000"
+   }
+  }
+ }
 }

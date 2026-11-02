@@ -10,7 +10,7 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from .compose import mask_boxes
+from .compose import mask_regions
 from .normalize import ffmpeg_bin, load_meta
 from .status import MSG_RENDER_FAILED, UserFacingError
 
@@ -52,7 +52,7 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
     job_dir = Path(job_dir)
     meta = load_meta(job_dir)
     tracks_doc, edits, manual = load_inputs(job_dir)
-    boxes = mask_boxes(tracks_doc, edits, manual)
+    regions = mask_regions(tracks_doc, edits, manual)
     src = job_dir / "normalized.mp4"
     out = job_dir / "output.mp4"
     tmp = job_dir / "output.tmp.mp4"
@@ -83,8 +83,8 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
                 ok, frame = cap.read()
                 if not ok:
                     break
-                for x, y, w, h, block in boxes.get(idx, ()):
-                    pixelate(frame, (x, y, w, h), block)
+                for r in regions.get(idx, ()):
+                    pixelate(frame, tuple(r["box"]), r["block"])
                 proc.stdin.write(np.ascontiguousarray(frame).tobytes())
                 idx += 1
                 written = idx
