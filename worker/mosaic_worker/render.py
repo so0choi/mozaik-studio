@@ -20,6 +20,8 @@ def compose_frame(src: np.ndarray, regions: list[dict], background: dict | None,
     """Spec 4.2 order: background over the whole frame, every region from the ORIGINAL src on top,
     then each failed region's frame-clipped box painted black (shape ignored). A background
     exception propagates (render fails); a region exception is logged and masked black."""
+    if not regions and not background:
+        return src  # nothing to mask: no copy (callers only read the result)
     out = apply_background(src, background) if background else src.copy()
     failed: list[list[int]] = []
     for r in regions:
@@ -85,7 +87,8 @@ def render(job_dir: Path, progress: Callable[[str, int], None] | None = None) ->
                     break
                 try:
                     frame = compose_frame(frame, regions.get(idx, []), background, lambda m: log.write((m + "\n").encode()))
-                except Exception:
+                except Exception as e:
+                    log.write(f"frame {idx} failed: {e!r}\n".encode())
                     raise UserFacingError(MSG_RENDER_FAILED)
                 proc.stdin.write(np.ascontiguousarray(frame).tobytes())
                 idx += 1

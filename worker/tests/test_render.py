@@ -257,6 +257,17 @@ def test_background_error_fails_render(tmp_path, face_image, model_path, monkeyp
         render(tmp_path)
     assert not (tmp_path / "output.mp4").exists()
     assert not (tmp_path / "output.tmp.mp4").exists()
+    log_text = (tmp_path / "render.log").read_text(encoding="utf-8")
+    assert "RuntimeError('bg')" in log_text
+    assert "frame 0" in log_text
+
+
+def test_compose_frame_without_regions_or_background_returns_src_unchanged():
+    src = np.full((8, 8, 3), 7, dtype=np.uint8)
+    before = src.copy()
+    out = compose_frame(src, [], None, lambda m: None)
+    assert out is src
+    assert np.array_equal(out, before)
 
 
 def test_render_end_to_end_with_effects(tmp_path, face_image, model_path):
