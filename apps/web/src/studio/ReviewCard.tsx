@@ -89,7 +89,7 @@ function ReviewCardInner(p: CardProps) {
         </button>
       </div>
       <p className="expl">{EXPLAIN[item.type]}</p>
-      {p.manualState === 'failed' && !tracking && <div className="trk fail">추적 실패 · 구간을 직접 지정하세요</div>}
+      {p.manualState === 'failed' && !tracking && <div className="trk fail">추적 실패 · 기준 프레임만 가려짐</div>}
 
       {tracking ? (
         <div className="trk" role="status">

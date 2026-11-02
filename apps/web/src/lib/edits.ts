@@ -48,6 +48,25 @@ export function setPersonVisible(edits: Edits, person: Person, visible: boolean)
   return { ...edits, visible: visible ? [...rest, ...person.trackIds] : rest };
 }
 
+/**
+ * Give a person an effect in ONE edit: masked (removed from `visible`) + `overrides[person.key]`.
+ * A group's member-piece overrides are cleared so the group effect really applies to every member.
+ */
+export function setPersonEffect(_doc: TracksDoc, edits: Edits, person: Person, effect: Effect): Edits {
+  const masked = setPersonVisible(edits, person, false);
+  const fx = effectsOf(masked);
+  const overrides = { ...fx.overrides };
+  if (person.isGroup) for (const id of person.trackIds) delete overrides[id];
+  overrides[person.key] = effect;
+  return { ...masked, effects: { ...fx, overrides } };
+}
+
+/** 원본 · 가림 해제. Idempotent: returns the same object when the person is already shown. */
+export function uncoverPerson(_doc: TracksDoc, edits: Edits, person: Person): Edits {
+  if (person.trackIds.every((id) => edits.visible.includes(id))) return edits;
+  return setPersonVisible(edits, person, true);
+}
+
 function nextGroupId(edits: Edits): string {
   const n = edits.groups.reduce((m, g) => {
     const k = /^g(\d+)$/.exec(g.id);

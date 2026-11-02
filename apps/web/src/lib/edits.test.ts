@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addManualAnchor, addManualEdit, deleteManual, emptyEdits, groupPersons, normalizeEdits,
-  setBackgroundEffect, setDefaultEffect, setManualTrim, setTargetEffect,
+  setBackgroundEffect, setDefaultEffect, setManualTrim, setPersonEffect, setTargetEffect, uncoverPerson,
 } from './edits';
 import { tracksDoc } from './fixtures';
 import { enlargeBox } from './geometry';
@@ -129,5 +129,31 @@ describe('deleteManual effects', () => {
   it('drops its override', () => {
     const e = setTargetEffect(base(), 'm1', blur);
     expect(deleteManual(e, 'm1').effects!.overrides).toEqual({});
+  });
+});
+
+describe('setPersonEffect / uncoverPerson', () => {
+  const person = (key: string, trackIds: string[], isGroup = false) =>
+    ({ key, label: key, trackIds, visible: true, thumb: '', samples: [], fragmentCount: 1, appearSec: 1, segments: [], isGroup, suspect: false }) as never;
+  const eff = { type: 'blur' as const, strength: 3, color: '#000000' };
+
+  it('setPersonEffect masks and sets override in one edit', () => {
+    const e: Edits = { ...emptyEdits(), visible: ['t1', 't2'] };
+    const next = setPersonEffect(tracksDoc, e, person('t1', ['t1']), eff);
+    expect(next.visible).toEqual(['t2']);
+    expect(next.effects!.overrides).toEqual({ t1: eff });
+  });
+  it('setPersonEffect on group clears member piece overrides', () => {
+    let e: Edits = { ...emptyEdits(), visible: ['t1', 't2'], groups: [{ id: 'g1', trackIds: ['t1', 't2'] }] };
+    e = setTargetEffect(setTargetEffect(e, 't1', { type: 'color', strength: 1, color: '#ff0000' }), 't2', eff);
+    const next = setPersonEffect(tracksDoc, e, person('g1', ['t1', 't2'], true), eff);
+    expect(next.visible).toEqual([]);
+    expect(next.effects!.overrides).toEqual({ g1: eff });
+  });
+  it('uncoverPerson is idempotent', () => {
+    const e: Edits = emptyEdits();
+    const once = uncoverPerson(tracksDoc, e, person('t1', ['t1']));
+    expect(once.visible).toEqual(['t1']);
+    expect(uncoverPerson(tracksDoc, once, person('t1', ['t1']))).toBe(once);
   });
 });

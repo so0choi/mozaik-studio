@@ -11,18 +11,24 @@ import {
   nextManualId,
   normalizeEdits,
   renameGroup,
+  setBackgroundEffect,
+  setDefaultEffect,
   setManualTrim,
+  setPersonEffect,
   setPersonVisible,
+  setTargetEffect,
+  uncoverPerson,
   splitTrack,
 } from '../lib/edits';
 import { enlargeBox } from '../lib/geometry';
 import { emptyHistory, push as pushHistory, redo as redoHistory, undo as undoHistory, type History } from '../lib/history';
 import { normalizeEffects } from '../lib/effectParams';
-import { maskRegions } from '../lib/masks';
+import { supportsCanvasFilter } from '../lib/effects';
+import { effectFor, maskRegions } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
 import { formatDuration } from '../lib/frames';
-import type { Box, Edits, Job, ManualDoc, ManualState, ReviewItem, TracksDoc } from '../lib/types';
+import type { Box, Edits, Effect, Job, ManualDoc, ManualState, ReviewItem, TracksDoc } from '../lib/types';
 import { BoxTool } from '../studio/BoxTool';
 import { ManualBoxCard, manualRange } from '../studio/ManualBoxCard';
 import { LeftPanel } from '../studio/LeftPanel';
@@ -76,36 +82,53 @@ export function Studio() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [renderPhase, setRenderPhase] = useState<'idle' | 'rendering'>('idle');
+  const [savingForRender, setSavingForRender] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [outputReady, setOutputReady] = useState(false);
   const [zoom, setZoom] = useState(1);
 
   // ---- edits: source of truth is the ref, saved with a 500ms debounce ----
   const editsRef = useRef<Edits>(edits);
-  const dirty = useRef(false);
+  // every committed edit bumps saveRevision; savedRevision is the last revision the API accepted
+  const saveRevision = useRef(0);
+  const savedRevision = useRef(0);
+  const saveChain = useRef<Promise<unknown>>(Promise.resolve());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const flush = useCallback(async () => {
+  /**
+   * Save until the API has the latest edits. Saves are serialized (a late reply of an older save can
+   * never overwrite a newer one) and an edit made during a save is saved by the same call.
+   * Resolves true only when savedRevision === saveRevision.
+   */
+  const flush = useCallback((): Promise<boolean> => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
-    if (!dirty.current) return;
-    dirty.current = false;
-    try {
-      await api.putEdits(id, editsRef.current);
-      setSaveError(null);
-    } catch (e) {
-      dirty.current = true;
-      setSaveError(e instanceof ApiError ? e.message : '저장하지 못했습니다.');
-    }
+    const run = async (): Promise<boolean> => {
+      while (savedRevision.current !== saveRevision.current) {
+        const rev = saveRevision.current;
+        try {
+          await api.putEdits(id, editsRef.current);
+          savedRevision.current = rev;
+          setSaveError(null);
+        } catch (e) {
+          setSaveError(e instanceof ApiError ? e.message : '저장하지 못했습니다.');
+          return false;
+        }
+      }
+      return true;
+    };
+    const result = saveChain.current.then(run, run);
+    saveChain.current = result;
+    return result;
   }, [id]);
 
   // shared by edits and undo/redo: ref -> state -> debounced save
   const commit = useCallback(
     (next: Edits) => {
       editsRef.current = next;
-      dirty.current = true;
+      saveRevision.current += 1;
       setEdits(next);
       setOutputReady(false);
       if (timer.current) clearTimeout(timer.current);
@@ -136,7 +159,7 @@ export function Studio() {
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
-      if (dirty.current) void api.putEdits(id, editsRef.current).catch(() => undefined);
+      if (savedRevision.current !== saveRevision.current) void api.putEdits(id, editsRef.current).catch(() => undefined);
     },
     [id],
   );
@@ -330,6 +353,35 @@ export function Studio() {
       setCurrentKey(key);
     },
     [tracks, updateEdits],
+  );
+  const filterSupported = useMemo(() => supportsCanvasFilter(), []);
+  const effects = useMemo(() => normalizeEffects(edits), [edits]);
+  const livePerson = useCallback((key: string) => buildPeople(tracks!, editsRef.current).find((x) => x.key === key), [tracks]);
+  const setEffectOf = useCallback(
+    (person: { key: string }, effect: Effect) => {
+      const fresh = livePerson(person.key);
+      if (!fresh) return;
+      updateEdits((e) => setPersonEffect(tracks!, e, fresh, effect));
+      setCurrentKey(fresh.key);
+    },
+    [tracks, updateEdits, livePerson],
+  );
+  const uncover = useCallback(
+    (person: { key: string }) => {
+      const fresh = livePerson(person.key);
+      if (fresh) updateEdits((e) => uncoverPerson(tracks!, e, fresh));
+    },
+    [tracks, updateEdits, livePerson],
+  );
+  const inheritEffect = useCallback((key: string) => updateEdits((e) => setTargetEffect(e, key, null)), [updateEdits]);
+  /** effect applied to a person (same priority as the render: group, then track, then default) and whether it is the person's own */
+  const effectOf = useCallback(
+    (person: { key: string; trackIds: string[] }) => {
+      const first = person.trackIds[0] ?? person.key;
+      const trackId = pieceById.get(first)?.trackId ?? first;
+      return { effect: effectFor(first, trackId, edits), own: Object.prototype.hasOwnProperty.call(effects.overrides, person.key) };
+    },
+    [pieceById, edits, effects],
   );
   const showSuspects = useCallback(() => {
     if (!tracks) return;
@@ -545,7 +597,7 @@ export function Studio() {
   };
   const removeManual = () => {
     if (!manualOpenEdit) return;
-    if (!window.confirm(`수동 박스 ${manualOpenEdit.id}을 삭제할까요?`)) return;
+    if (!window.confirm(`수동 영역 ${manualOpenEdit.id}을 삭제할까요?`)) return;
     const mid = manualOpenEdit.id;
     updateEdits((e) => deleteManual(e, mid));
     setManualOpen(null);
@@ -624,13 +676,20 @@ export function Studio() {
   // ---- render ----
   const startRender = async () => {
     setRenderError(null);
+    setSavingForRender(true);
     try {
-      await flush();
+      // a render must never use unsaved edits: wait for the save, and do not render if it failed
+      if (!(await flush())) {
+        setRenderError('저장하지 못해 렌더를 시작하지 않았습니다.');
+        return;
+      }
       await api.render(id);
       setOutputReady(false);
       setRenderPhase('rendering');
     } catch (e) {
       setRenderError(e instanceof ApiError ? e.message : '렌더를 시작하지 못했습니다.');
+    } finally {
+      setSavingForRender(false);
     }
   };
   useEffect(() => {
@@ -679,6 +738,8 @@ export function Studio() {
       }
       return;
     }
+    // effect controls own their keys (Space/arrows act on the focused button or slider, never on playback)
+    if (target?.closest?.('[data-effect-control]')) return;
     const onControl = !!target?.closest?.('button, a, [role="switch"], [role="checkbox"], [role="slider"]');
     const itemTracking = !!activeItem && manualState[reviewManual[activeItem.id]] === 'tracking';
     const canAct = !!activeItem && !manualOpenEdit && !itemTracking;
@@ -781,9 +842,9 @@ export function Studio() {
   const noteText = unresolved.length
     ? `확인 필요 ${unresolved.length}건 남음`
     : trackingCount
-      ? '수동 박스 추적 중'
+      ? '수동 영역 추적 중'
       : '모든 항목 확인됨';
-  const canRender = unresolved.length === 0 && trackingCount === 0 && renderPhase === 'idle';
+  const canRender = unresolved.length === 0 && trackingCount === 0 && renderPhase === 'idle' && !savingForRender;
 
   return (
     <>
@@ -808,7 +869,11 @@ export function Studio() {
             </a>
           )}
           <button type="button" className="btn-primary" disabled={!canRender} onClick={() => void startRender()}>
-            {renderPhase === 'rendering' ? (
+            {savingForRender ? (
+              <>
+                <i className="spin" /> 저장 중…
+              </>
+            ) : renderPhase === 'rendering' ? (
               <>
                 <i className="spin" /> 렌더 중
               </>
@@ -825,10 +890,14 @@ export function Studio() {
           reviewCount={unresolved.length}
           boxActive={!!boxMode}
           onToggleBox={toggleBox}
+          effects={effects}
+          filterSupported={filterSupported}
+          onDefault={(eff) => updateEdits((e) => setDefaultEffect(e, eff))}
+          onBackground={(eff) => updateEdits((e) => setBackgroundEffect(e, eff))}
           review={
             <>
               {manualOpenEdit ? (
-                <p className="rv-paused">수동 박스를 편집 중입니다. 닫으면 검수를 이어갑니다.</p>
+                <p className="rv-paused">수동 영역을 편집 중입니다. 닫으면 검수를 이어갑니다.</p>
               ) : (
                 <ReviewCard
                   item={activeItem}
@@ -990,6 +1059,7 @@ export function Studio() {
             selected={selected}
             currentKey={currentKey}
             thumbSrc={thumbSrc}
+            effectOf={effectOf}
             onToggleVisible={toggleVisible}
             onToggleSelect={toggleSelect}
             onFocusPerson={focusPerson}
@@ -1009,6 +1079,11 @@ export function Studio() {
               state={manualState[manualOpenEdit.id]}
               fps={fps}
               drawing={boxMode?.manualId === manualOpenEdit.id}
+              own={effects.overrides[manualOpenEdit.id] ?? null}
+              inherited={effects.default}
+              filterSupported={filterSupported}
+              onEffect={(eff) => updateEdits((e) => setTargetEffect(e, manualOpenEdit.id, eff))}
+              onInherit={() => inheritEffect(manualOpenEdit.id)}
               onTrimFrom={trimFrom}
               onTrimTo={trimTo}
               onTrimClear={() => updateEdits((e) => setManualTrim(e, manualOpenEdit.id, null))}
@@ -1017,7 +1092,18 @@ export function Studio() {
               onClose={() => setManualOpen(null)}
             />
           ) : (
-            current && <TargetDetail person={current} onSetVisible={toggleVisible} onClose={clearFocus} />
+            current && (
+              <TargetDetail
+                person={current}
+                own={effects.overrides[current.key] ?? null}
+                inherited={effectOf(current).effect}
+                filterSupported={filterSupported}
+                onEffect={setEffectOf}
+                onInherit={(person) => inheritEffect(person.key)}
+                onUncover={uncover}
+                onClose={clearFocus}
+              />
+            )
           )}
           <VideoInfo
             filename={job.filename}

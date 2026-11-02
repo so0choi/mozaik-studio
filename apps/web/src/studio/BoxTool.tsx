@@ -62,7 +62,7 @@ export function BoxTool({ rect, srcW, srcH, initial, confirmLabel = '이 영역�
           style={{ left: rect.x + disp[0], top: rect.y + disp[1], width: disp[2], height: disp[3] }}
         />
       )}
-      <div className="bt-actions" role="group" aria-label="수동 박스">
+      <div className="bt-actions" role="group" aria-label="수동 영역">
         <span>드래그해 가릴 영역을 그리세요</span>
         <button type="button" className="go" disabled={!box} onClick={() => box && onConfirm(clampBox(box, srcW, srcH))}>
           {confirmLabel}

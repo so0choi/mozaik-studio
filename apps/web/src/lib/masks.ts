@@ -13,7 +13,7 @@ function manualBlock(w: number, h: number): number {
  * containing the track or piece (without an override there we fall through to the track override,
  * never to a later group), track override, then the default.
  */
-function effectFor(pieceId: string, trackId: string, edits: Edits): Effect {
+export function effectFor(pieceId: string, trackId: string, edits: Edits): Effect {
   const fx = normalizeEffects(edits);
   const ov = fx.overrides;
   const has = (k: string) => Object.prototype.hasOwnProperty.call(ov, k);

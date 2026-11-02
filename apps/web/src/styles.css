@@ -5,6 +5,7 @@
   --teal:#2BB3A3;--ph:#E5484D;
   --low-bg:#FBE6E1;--low-ink:#9B2F1E;--cross-bg:#E4ECFB;--cross-ink:#2A4FA8;
   --track:#ECEDF2;--seg-bg:#F1F1F5;--warn-ink:#8A5300;--focus:#2F6FED;--chk-line:#CDCFD8;
+  --overlay-fill:rgba(108,92,231,.22);--overlay-line:#6C5CE7;--overlay-ink:#FFFFFF;
   --r-s:8px;--r-m:12px;--r-l:16px;
   --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
   --font:'SUIT',system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
@@ -18,6 +19,7 @@
     --teal:#38C9B8;--ph:#FF6B70;
     --low-bg:#3F1E19;--low-ink:#FFB4A8;--cross-bg:#1D2A4D;--cross-ink:#A9C1FF;
     --track:#2A2E3D;--seg-bg:#252938;--warn-ink:#FFD27A;--focus:#8FB0FF;--chk-line:#4A5164;
+    --overlay-fill:rgba(133,118,240,.3);--overlay-line:#B4ABFF;--overlay-ink:#12141B;
   }
 }
 *{box-sizing:border-box;margin:0}
@@ -375,3 +377,20 @@ h2.sect{font-size:15px;font-weight:800;padding:var(--s2) 2px 0}
   .mk{height:14px;min-height:14px}
   .zoom input[type=range]{width:72px}
 }
+
+/* effect controls */
+.fx{display:flex;flex-direction:column;gap:var(--s2)}
+.fxstate{font-size:12px;font-weight:700;color:var(--muted)}
+.fxnote{font-size:12px;line-height:1.5;color:var(--warn-ink);background:var(--warn-bg);border-radius:var(--r-s);padding:var(--s2) var(--s3)}
+.fxrow{display:flex;flex-direction:column;gap:var(--s1)}
+.fxlab{font-size:12px;font-weight:700}
+.fxslide{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:var(--s2)}
+.fxslide small{font-size:11px;color:var(--muted)}
+.fxslide input{width:100%;accent-color:var(--primary)}
+.fxcolor{flex-direction:row;align-items:center;gap:var(--s2)}
+.fxcolor input{width:40px;height:30px;padding:0;border:1px solid var(--line);border-radius:var(--r-s);background:none}
+.fx .resetbtn{align-self:flex-start}
+.rtag .own{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-left:5px;vertical-align:middle}
+.uncover{width:100%;height:34px;border-radius:var(--r-s);border:1px solid var(--warn);background:var(--warn-bg);color:var(--warn-ink);font-size:13px;font-weight:800}
+.uncover[aria-pressed="true"]{background:var(--warn);color:#1F2330}
+.uncover:focus-visible{outline:2px solid var(--focus);outline-offset:2px}

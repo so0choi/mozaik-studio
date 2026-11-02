@@ -5,7 +5,8 @@ export interface Call {
   path: string;
   body: unknown;
 }
-export type Reply = { status?: number; body?: unknown } | undefined;
+/** `wait`: the response is held until this promise settles (a rejection becomes a network error). */
+export type Reply = { status?: number; body?: unknown; wait?: Promise<unknown> } | undefined;
 export type Handler = (c: Call) => Reply;
 
 /** Replace global fetch; unhandled requests answer 404 so missing mocks fail loudly in assertions. */
@@ -21,6 +22,7 @@ export function installFetch(handler: Handler): Call[] {
       };
       calls.push(call);
       const r = handler(call) ?? { status: 404, body: { message: `unmocked ${call.method} ${call.path}` } };
+      if (r.wait) await r.wait;
       const text = r.body === undefined ? '' : JSON.stringify(r.body);
       return new Response(text, { status: r.status ?? 200, headers: { 'Content-Type': 'application/json' } });
     }),

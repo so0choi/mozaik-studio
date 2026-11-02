@@ -629,7 +629,7 @@ describe('Studio split and manual box', () => {
     expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeDisabled();
 
     await waitFor(() => expect(screen.getByTestId('note')).toHaveTextContent('모든 항목 확인됨'), { timeout: 5000 });
-    expect(screen.getByTestId('manual-chip')).toHaveTextContent('수동 박스 m1');
+    expect(screen.getByTestId('manual-chip')).toHaveTextContent('수동 영역 m1');
     expect(screen.getByTestId('manual-chip')).not.toHaveTextContent('추적 중');
     await waitFor(() => {
       const last = puts(calls).at(-1)!.body as Edits;
@@ -649,7 +649,7 @@ describe('Studio split and manual box', () => {
     await userEvent.click(screen.getByRole('button', { name: /문제 있음/ }));
     await userEvent.click(screen.getByRole('button', { name: /얼굴이 보여요/ }));
     await userEvent.click(screen.getByRole('button', { name: '이 영역으로 추적' }));
-    expect(await screen.findByText('추적 실패 · 구간을 직접 지정하세요')).toBeInTheDocument();
+    expect(await screen.findByText('추적 실패 · 기준 프레임만 가려짐')).toBeInTheDocument();
   });
 
   it('drawing with 박스 그리기 + drag posts the dragged box in source pixels', async () => {
@@ -703,7 +703,7 @@ describe('Studio ManualBoxCard', () => {
       },
     });
   const openChip = async () => {
-    await userEvent.click(await screen.findByRole('button', { name: /수동 박스 m1/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /수동 영역 m1/ }));
     return screen.getByTestId('manual-card-m1');
   };
 
@@ -750,7 +750,7 @@ describe('Studio ManualBoxCard', () => {
     const calls = withManual();
     const c = await openChip();
     await userEvent.click(within(c).getByRole('button', { name: /삭제/ }));
-    expect(confirm).toHaveBeenCalledWith('수동 박스 m1을 삭제할까요?');
+    expect(confirm).toHaveBeenCalledWith('수동 영역 m1을 삭제할까요?');
     await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
     expect((puts(calls)[0].body as Edits).manual[0].deleted).toBe(true);
     expect(screen.queryByTestId('manual-card-m1')).toBeNull();
@@ -907,16 +907,18 @@ describe('Studio undo / redo', () => {
 });
 
 describe('Studio right column', () => {
-  it('focusing a person shows the detail panel; 원본 / 모자이크 / 기본값 change visibility; × clears focus', async () => {
-    setup();
+  it('focusing a person shows the detail panel; effect click masks with an override; 원본 · 가림 해제 uncovers; × clears focus', async () => {
+    const calls = setup();
     await userEvent.click(await card('t2'));
-    const detail = screen.getByTestId('target-detail');
-    expect(within(detail).getByText('이 대상은 모자이크로 가려집니다.')).toBeInTheDocument();
-    await userEvent.click(within(detail).getByRole('button', { name: '원본' }));
+    const detail = await screen.findByTestId('target-detail');
+    await userEvent.click(within(detail).getByRole('button', { name: '원본 · 가림 해제' }));
     expect(within(detail).getByText(/이 대상은 원본으로 보입니다/)).toBeInTheDocument();
     expect(within(await card('t2')).getByRole('switch', { name: '인물 2 보임 전환' })).toHaveAttribute('aria-checked', 'true');
-    await userEvent.click(within(detail).getByRole('button', { name: '기본값' }));
+    await userEvent.click(within(detail).getByRole('button', { name: '블러' }));
     expect(within(await card('t2')).getByRole('switch', { name: '인물 2 보임 전환' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(await card('t2')).getByTestId('rtag-t2')).toHaveTextContent('블러');
+    await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
+    expect((puts(calls)[0].body as Edits).effects!.overrides.t2).toEqual({ type: 'blur', strength: 1, color: '#000000' });
     await userEvent.click(within(detail).getByRole('button', { name: '선택 해제' }));
     expect(screen.queryByTestId('target-detail')).toBeNull();
   });
@@ -924,9 +926,85 @@ describe('Studio right column', () => {
   it('left panel: auto blur switch is on and disabled; 사각형 is the box tool', async () => {
     setup();
     await card('t1');
-    const sw = screen.getByRole('switch', { name: '자동 블러 켜짐' });
+    const sw = screen.getByRole('switch', { name: '자동 가림 켜짐' });
     expect(sw).toBeDisabled();
     expect(sw).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('button', { name: '박스 그리기' })).toHaveTextContent('사각형');
+  });
+});
+
+describe('Studio save-gated render', () => {
+  const deferred = () => {
+    let resolve!: () => void;
+    let reject!: () => void;
+    const promise = new Promise<void>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  };
+  const renders = (calls: Call[]) => calls.filter((c) => c.path === '/api/jobs/j1/render');
+  const resolved = { ...emptyEdits, reviewed: ['r1'] };
+
+  it('render waits for in-flight save', async () => {
+    const d = deferred();
+    const calls = setup({
+      edits: resolved,
+      extra: (c) => {
+        if (c.path === '/api/jobs/j1/edits' && c.method === 'PUT') return { body: {}, wait: d.promise };
+        if (c.path === '/api/jobs/j1/render') return { status: 202, body: {} };
+        return undefined;
+      },
+    });
+    await toggle('t1', '인물 1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    expect(await screen.findByText('저장 중…')).toBeInTheDocument();
+    await sleep(100);
+    expect(renders(calls).length).toBe(0);
+    d.resolve();
+    await waitFor(() => expect(renders(calls).length).toBe(1));
+  });
+
+  it('render not requested when save fails', async () => {
+    const calls = setup({
+      edits: resolved,
+      extra: (c) =>
+        c.path === '/api/jobs/j1/edits' && c.method === 'PUT' ? { status: 500, body: { message: '서버 오류' } } : undefined,
+    });
+    await toggle('t1', '인물 1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('저장하지 못해 렌더를 시작하지 않았습니다.');
+    expect(renders(calls).length).toBe(0);
+  });
+
+  it('edit during save is saved before render', async () => {
+    const d = deferred();
+    let n = 0;
+    const calls = setup({
+      edits: resolved,
+      extra: (c) => {
+        if (c.path === '/api/jobs/j1/edits' && c.method === 'PUT') return ++n === 1 ? { body: {}, wait: d.promise } : { body: {} };
+        if (c.path === '/api/jobs/j1/render') return { status: 202, body: {} };
+        return undefined;
+      },
+    });
+    await toggle('t1', '인물 1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    await waitFor(() => expect(puts(calls).length).toBe(1));
+    await toggle('t3', '인물 3'); // edit while the first save is in flight
+    d.resolve();
+    await waitFor(() => expect(renders(calls).length).toBe(1));
+    expect(puts(calls).length).toBe(2);
+    expect((puts(calls)[1].body as Edits).visible).toContain('t3');
+    // the render request came after the second save
+    expect(calls.indexOf(renders(calls)[0])).toBeGreaterThan(calls.indexOf(puts(calls)[1]));
+  });
+
+  it('Space on a focused effect button does not toggle playback', async () => {
+    setup();
+    await userEvent.click(await card('t2'));
+    const detail = await screen.findByTestId('target-detail');
+    const btn = within(detail).getByRole('button', { name: '블러' });
+    btn.focus();
+    const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    btn.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
   });
 });
