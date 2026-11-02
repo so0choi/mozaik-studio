@@ -9,7 +9,7 @@ import math
 from collections import defaultdict
 from typing import TypedDict
 
-from .effects import normalize_effect, normalize_effects
+from .effects import normalize_effects, region_block
 
 
 class Region(TypedDict):
@@ -54,27 +54,32 @@ def visible_ids(edits: dict) -> set[str]:
 
 def effect_for(piece_id: str, track_id: str, edits: dict) -> dict:
     """Effect of one masked piece (spec 3.2): piece override, first group containing
-    the track or piece, track override, then the default."""
+    the track or piece (only that group is consulted; without an override there we fall
+    through to the track override), track override, then the default."""
     fx = normalize_effects(edits or {})
     ov = fx["overrides"]
     if piece_id != track_id and piece_id in ov:  # split piece; an unsplit track is step 3
         return ov[piece_id]
     for g in (edits or {}).get("groups", []):
         ids = g.get("trackIds", [])
-        if (track_id in ids or piece_id in ids) and g["id"] in ov:
-            return ov[g["id"]]
+        if track_id in ids or piece_id in ids:
+            if g["id"] in ov:
+                return ov[g["id"]]
+            break
     if track_id in ov:
         return ov[track_id]
     return fx["default"]
 
 
-def _poly_points(shape_pts, D, A, B) -> list[list[int]]:
+def _poly_points(shape_pts, D, A, B) -> list[list[int]] | None:
     """Map normalized polygon points (u, v) drawn on box D to frame box B.
 
     Linear box map from the anchor frame's propagated box A to B:
     P = B.xy + (P_drawn - A.xy) * (B.wh / A.wh), rounded half up. At B == A this is
-    exactly the drawn polygon.
+    exactly the drawn polygon. Returns None for a degenerate A or B (caller uses rect).
     """
+    if min(A[2], A[3], B[2], B[3]) <= 0:
+        return None
     dx, dy, dw, dh = D
     sx, sy = B[2] / A[2], B[3] / A[3]
     out = []
@@ -99,7 +104,7 @@ def mask_regions(tracks_doc: dict, edits: dict, manual: list[dict]) -> dict[int,
             continue
         eff = effect_for(frag_id, track_id, edits)
         for f, box in frames.items():
-            per_frame[f].append(_make_region(frag_id, box, block, eff))
+            per_frame[f].append(_make_region(frag_id, box, region_block(block, eff["strength"]), eff))
 
     edit_by_id = {m["id"]: m for m in edits.get("manual", [])}
 
@@ -111,12 +116,6 @@ def mask_regions(tracks_doc: dict, edits: dict, manual: list[dict]) -> dict[int,
         if shape == "ellipse":
             return "ellipse", None
         return "rect", None
-
-    def anchor_box(e, f):
-        for a in e.get("anchors", []):
-            if int(a["frame"]) == f:
-                return a["box"]
-        return None
 
     for doc in manual or []:
         e = edit_by_id.get(doc["id"], {})
@@ -137,7 +136,7 @@ def mask_regions(tracks_doc: dict, edits: dict, manual: list[dict]) -> dict[int,
             if shape == "polygon" and anchors:
                 af, D = min(anchors, key=lambda a: (abs(a[0] - f), a[0]))
                 points = _poly_points(pts, D, doc_frames[af], (x, y, w, h))
-            r = _make_region(doc["id"], (x, y, w, h), manual_block(w, h), eff,
+            r = _make_region(doc["id"], (x, y, w, h), region_block(manual_block(w, h), eff["strength"]), eff,
                              shape if (shape != "polygon" or points) else "rect", points)
             per_frame[f].append(r)
 
@@ -156,6 +155,8 @@ def mask_regions(tracks_doc: dict, edits: dict, manual: list[dict]) -> dict[int,
                 continue
             x, y, w, h = (int(v) for v in a["box"])
             points = _poly_points(pts, (x, y, w, h), (x, y, w, h), (x, y, w, h)) if shape == "polygon" else None
-            per_frame[f].append(_make_region(e["id"], (x, y, w, h), manual_block(w, h), eff, shape, points))
+            r_shape = shape if (shape != "polygon" or points) else "rect"
+            per_frame[f].append(_make_region(e["id"], (x, y, w, h), region_block(manual_block(w, h), eff["strength"]),
+                                             eff, r_shape, points))
 
     return {f: sorted(rs, key=lambda r: (r["box"][0], r["box"][1])) for f, rs in per_frame.items()}

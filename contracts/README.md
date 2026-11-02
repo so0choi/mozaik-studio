@@ -13,7 +13,7 @@ Spec §3 (`docs/superpowers/specs/2026-10-30-face-mosaic-studio-design.md`) is t
 Rules encoded by the expected values:
 - Default is mosaic; only `visible` track ids (or groups) are skipped.
 - Split at frame F: `<id>a` covers frames < F, `<id>b` covers frames ≥ F.
-- Manual boxes: skip `deleted`; when `trim` is set keep only frames within [trim0, trim1]; block = max(8, min(w,h)//8).
+- Manual boxes: skip `deleted`; when `trim` is set keep only frames within [trim0, trim1]; block = max(8, min(w,h)//8). Region `block` = region_block(base, effect.strength).
 - Track boxes use the track's fixed `blockSize`. Boxes are already expanded; never expand again.
-- Effect order for a target piece: split-piece override, first group (in `groups` order) containing the track or piece, track override, `effects.default`. Manual regions: their own override, then default. Unknown override keys are ignored.
+- Effect order for a target piece: split-piece override, first group (in `groups` order) containing the track or piece decides (no override there: fall through to the track override, never to a later group), track override, `effects.default`. Manual regions: their own override, then default. Unknown override keys are ignored.
 - Polygon points: P = B.xy + (P_drawn - A.xy) * (B.wh / A.wh), A = nearest anchor frame propagated box, B = frame box; equal to the drawn polygon at B == A and in the anchor fallback.

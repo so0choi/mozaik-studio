@@ -160,3 +160,62 @@ def test_manual_edit_without_propagation_doc_masks_anchor_frames():
                          "trim": [0, 50], "deleted": False}]}
     out = mask_boxes5(tracks, edits, [])
     assert out == {12: [(50, 60, 40, 40, 8)]}
+
+
+def test_block_scales_with_strength():
+    tracks, edits, manual = sample()
+    edits["effects"]["overrides"]["m1"] = {"type": "mosaic", "strength": 3}
+    edits["effects"]["default"] = {"type": "mosaic", "strength": 5}
+    r = mask_regions(tracks, edits, manual)
+    by_id = {x["id"]: x for x in r[44]}
+    assert by_id["t2a"]["block"] == 30   # base 10 * 3.0
+    assert by_id["m1"]["block"] == 16    # base 8 * 2.0
+    assert by_id["t3"]["block"] == 16    # blur strength 3, base 8 * 2.0
+    assert [x["block"] for x in r[60]] == [24]  # m3 anchor fallback, default strength 5: base 8 * 3.0
+
+
+def test_first_group_decides_even_without_override():
+    tracks, edits, manual = sample()
+    edits["groups"] = [{"id": "g1", "trackIds": ["t3"], "label": ""}, {"id": "g2", "trackIds": ["t3"], "label": ""}]
+    edits["effects"]["overrides"] = {"g2": {"type": "color", "color": "#00ff00"}}
+    r = mask_regions(tracks, edits, manual)
+    assert [x["effect"]["type"] for x in r[47] if x["id"] == "t3"] == ["mosaic"]  # default, g2 skipped
+    edits["effects"]["overrides"]["t3"] = {"type": "blur", "strength": 2}
+    r = mask_regions(tracks, edits, manual)
+    assert [x["effect"]["type"] for x in r[47] if x["id"] == "t3"] == ["blur"]  # track override
+
+
+def test_degenerate_polygon_box_falls_back_to_rect():
+    doc = {"id": "m3", "frames": {"60": [93, 95, 75, 50], "61": [100, 100, 0, 50]}, "segments": [[60, 61]]}
+    r = mask_regions({"tracks": []}, _poly_edits(), [doc])
+    assert r[60][0]["shape"] == "polygon"
+    assert r[61][0]["shape"] == "rect" and r[61][0]["points"] is None
+    edits = _poly_edits()
+    edits["manual"][0]["anchors"][0]["box"] = [100, 100, 0, 40]
+    r = mask_regions({"tracks": []}, edits, [])
+    assert r[60][0]["shape"] == "rect" and r[60][0]["points"] is None
+
+
+def test_nearest_anchor_and_tie_goes_to_earlier():
+    edits = {"manual": [{"id": "m3", "shape": "polygon", "points": [[0, 0]], "trim": None, "deleted": False,
+                         "anchors": [{"frame": 60, "box": [100, 100, 60, 40]}, {"frame": 70, "box": [200, 100, 60, 40]}]}]}
+    doc = {"id": "m3", "segments": [[60, 70]], "frames": {
+        "60": [100, 100, 60, 40], "70": [200, 100, 60, 40], "62": [110, 100, 60, 40],
+        "68": [210, 100, 60, 40], "65": [150, 100, 60, 40]}}
+    r = mask_regions({"tracks": []}, edits, [doc])
+    # frame 62 -> anchor 60 (D=100,100): B.x + (100-100) = 110; frame 68 -> anchor 70 (D=200): 210 + 0
+    assert r[62][0]["points"] == [[110, 100]]
+    assert r[68][0]["points"] == [[210, 100]]
+    # frame 65 is equidistant from both anchors; redraw anchor 70 so the two choices differ
+    edits["manual"][0]["anchors"][1]["box"] = [300, 100, 60, 40]
+    doc["frames"]["70"] = [200, 100, 60, 40]
+    r = mask_regions({"tracks": []}, edits, [doc])
+    # tie at 65: earlier anchor 60 -> P = 150 + (100 - 100) = 150 (anchor 70 would give 150 + (300 - 200) = 250)
+    assert r[65][0]["points"] == [[150, 100]]
+
+
+def test_polygon_without_propagated_anchor_box_is_rect():
+    edits = _poly_edits()  # anchor at 60, but the doc only has frame 61
+    doc = {"id": "m3", "frames": {"61": [93, 95, 75, 50]}, "segments": [[61, 61]]}
+    r = mask_regions({"tracks": []}, edits, [doc])
+    assert r[61][0]["shape"] == "rect" and r[61][0]["points"] is None and r[61][0]["box"] == [93, 95, 75, 50]
