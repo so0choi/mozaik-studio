@@ -95,9 +95,13 @@ function ManualBoxCardInner(p: Props) {
           <span>
             <b>다시 그리기</b>
             <small>
-              {p.manual.shape === 'polygon'
-                ? '위치·크기만 다시 잡습니다. 꼭짓점 모양을 바꾸려면 영역을 지우고 새로 그리세요'
-                : '그린 프레임부터 다음 기준점까지만 다시 추적합니다'}
+              그린 프레임부터 다음 기준점까지만 다시 추적합니다
+              {p.manual.shape && p.manual.shape !== 'rect' && (
+                <>
+                  <br />
+                  모양을 바꾸려면 이 영역을 지우고 새로 그리세요
+                </>
+              )}
             </small>
           </span>
         </button>

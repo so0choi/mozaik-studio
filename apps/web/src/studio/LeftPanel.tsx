@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from 'react';
-import type { Effect, Effects } from '../lib/types';
+import type { Effect, Effects, Shape } from '../lib/types';
 import { EffectControls } from './EffectControls';
 
 interface Props {
@@ -8,8 +8,9 @@ interface Props {
   /** unresolved required items, shown as a badge */
   reviewCount: number;
   /** box tool state: the 사각형 button is the existing box tool */
-  boxActive: boolean;
-  onToggleBox: () => void;
+  /** active drawing tool, or null */
+  drawTool: Shape | null;
+  onSelectTool: (shape: Shape) => void;
   effects: Effects;
   filterSupported: boolean;
   onDefault: (e: Effect) => void;
@@ -99,8 +100,9 @@ function LeftPanelInner(p: Props) {
               className="tool"
               aria-label="박스 그리기"
               aria-keyshortcuts="B"
-              aria-pressed={p.boxActive}
-              onClick={p.onToggleBox}
+              aria-pressed={p.drawTool === 'rect'}
+              data-draw-tool="rect"
+              onClick={() => p.onSelectTool('rect')}
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                 <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />
@@ -108,13 +110,25 @@ function LeftPanelInner(p: Props) {
               <span>사각형</span>
               <kbd>B</kbd>
             </button>
-            <button type="button" className="tool" disabled title={SOON}>
+            <button
+              type="button"
+              className="tool"
+              aria-pressed={p.drawTool === 'ellipse'}
+              data-draw-tool="ellipse"
+              onClick={() => p.onSelectTool('ellipse')}
+            >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                 <ellipse cx="8" cy="8" rx="5.5" ry="4" />
               </svg>
               <span>타원</span>
             </button>
-            <button type="button" className="tool" disabled title={SOON}>
+            <button
+              type="button"
+              className="tool"
+              aria-pressed={p.drawTool === 'polygon'}
+              data-draw-tool="polygon"
+              onClick={() => p.onSelectTool('polygon')}
+            >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
                 <path d="M8 2.5l5.5 4-2 6.5h-7l-2-6.5z" />
               </svg>

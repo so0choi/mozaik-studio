@@ -28,7 +28,7 @@ import { effectFor, maskRegions } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
 import { formatDuration } from '../lib/frames';
-import type { Box, Edits, Effect, Job, ManualDoc, ManualState, ReviewItem, TracksDoc } from '../lib/types';
+import type { Box, Edits, Effect, Job, ManualDoc, ManualState, ReviewItem, Shape, TracksDoc } from '../lib/types';
 import { BoxTool } from '../studio/BoxTool';
 import { ManualBoxCard, manualRange } from '../studio/ManualBoxCard';
 import { LeftPanel } from '../studio/LeftPanel';
@@ -46,6 +46,9 @@ const SAVE_DEBOUNCE_MS = 500;
 const EDITABLE = ['ready', 'rendering', 'rendered'];
 
 interface BoxMode {
+  shape: Shape;
+  /** polygon redraw: existing vertices, kept while only the box changes */
+  points?: [number, number][] | null;
   initial: Box | null;
   reviewId: string | null;
   /** set when redrawing an existing manual box (adds an anchor instead of a new box) */
@@ -511,7 +514,7 @@ export function Studio() {
       setManualOpen(null);
       seek(it.startFrame);
       pause();
-      setBoxMode({ initial: enlarge ? enlargeBox(it.box, 1.3, tracks.width, tracks.height) : it.box, reviewId: itemId });
+      setBoxMode({ shape: 'rect', initial: enlarge ? enlargeBox(it.box, 1.3, tracks.width, tracks.height) : it.box, reviewId: itemId });
     },
     [reviewItems, seek, tracks],
   );
@@ -593,7 +596,13 @@ export function Studio() {
     const doc = manualDocs[manualOpenEdit.id];
     const box = doc?.frames[String(frame)] ?? manualOpenEdit.anchors.find((a) => a.frame === frame)?.box ?? null;
     pause();
-    setBoxMode({ initial: box, reviewId: null, manualId: manualOpenEdit.id });
+    setBoxMode({
+      shape: manualOpenEdit.shape ?? 'rect',
+      points: manualOpenEdit.points ?? null,
+      initial: box,
+      reviewId: null,
+      manualId: manualOpenEdit.id,
+    });
   };
   const removeManual = () => {
     if (!manualOpenEdit) return;
@@ -603,15 +612,21 @@ export function Studio() {
     setManualOpen(null);
     setBoxMode((b) => (b?.manualId === mid ? null : b));
   };
-  const toggleBox = useCallback(() => {
-    if (boxMode) setBoxMode(null);
-    else {
+  /** Pick a drawing tool: same tool again closes it; another tool discards the draft and starts that shape. */
+  const selectTool = useCallback(
+    (shape: Shape) => {
+      if (boxMode && boxMode.shape === shape && !boxMode.manualId) {
+        setBoxMode(null);
+        return;
+      }
       pause();
-      setBoxMode({ initial: null, reviewId: null });
-    }
-  }, [boxMode]);
+      setBoxMode(boxMode && !boxMode.manualId ? { ...boxMode, shape, points: null } : { shape, initial: null, reviewId: null });
+    },
+    [boxMode],
+  );
+  const toggleBox = useCallback(() => selectTool('rect'), [selectTool]);
 
-  const confirmBox = async (box: Box) => {
+  const confirmBox = async (box: Box, points: [number, number][] | null) => {
     const mode = boxMode;
     setBoxMode(null);
     const at = frame;
@@ -631,9 +646,18 @@ export function Studio() {
       }
       return;
     }
+    const shape = mode?.shape ?? 'rect';
     const mid = nextManualId(editsRef.current);
     if (mode?.reviewId) setStageState({ id: mode.reviewId, stage: 'ask' });
-    updateEdits((e) => addManualEdit(e, { id: mid, anchors: [{ frame: at, box }], trim: null, deleted: false }));
+    updateEdits((e) => addManualEdit(e, {
+        id: mid,
+        anchors: [{ frame: at, box }],
+        trim: null,
+        deleted: false,
+        ...(shape !== 'rect' ? { shape } : {}),
+        ...(shape === 'polygon' && points ? { points } : {}),
+      }),
+    );
     setManualState((s) => ({ ...s, [mid]: 'tracking' }));
     if (mode?.reviewId) setReviewManual((r) => ({ ...r, [mode.reviewId!]: mid }));
     await flush();
@@ -733,7 +757,9 @@ export function Studio() {
     const target = e.target as HTMLElement | null;
     if (boxMode) {
       if (e.key === 'Escape') {
+        const tool = boxMode.shape;
         setBoxMode(null);
+        requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-draw-tool="${tool}"]`)?.focus());
         e.preventDefault();
       }
       return;
@@ -888,8 +914,8 @@ export function Studio() {
       <main id="main" className="studio">
         <LeftPanel
           reviewCount={unresolved.length}
-          boxActive={!!boxMode}
-          onToggleBox={toggleBox}
+          drawTool={boxMode?.shape ?? null}
+          onSelectTool={selectTool}
           effects={effects}
           filterSupported={filterSupported}
           onDefault={(eff) => updateEdits((e) => setDefaultEffect(e, eff))}
@@ -1008,11 +1034,14 @@ export function Studio() {
             {(rect) =>
               boxMode && (
                 <BoxTool
+                  key={`${boxMode.shape}:${boxMode.manualId ?? ''}`}
                   rect={rect}
+                  shape={boxMode.shape}
+                  initialPoints={boxMode.points ?? null}
                   srcW={tracks.width}
                   srcH={tracks.height}
                   initial={boxMode.initial}
-                  onConfirm={(b) => void confirmBox(b)}
+                  onConfirm={(b, pts) => void confirmBox(b, pts)}
                   onCancel={() => setBoxMode(null)}
                 />
               )

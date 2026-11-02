@@ -11,8 +11,8 @@ const fx = (over: Partial<Effects> = {}): Effects => ({
 });
 
 function setup(effects = fx(), filterSupported = true) {
-  const h = { onDefault: vi.fn(), onBackground: vi.fn(), onToggleBox: vi.fn() };
-  render(<LeftPanel review={null} reviewCount={0} boxActive={false} effects={effects} filterSupported={filterSupported} {...h} />);
+  const h = { onDefault: vi.fn(), onBackground: vi.fn(), onSelectTool: vi.fn() };
+  render(<LeftPanel review={null} reviewCount={0} drawTool={null} effects={effects} filterSupported={filterSupported} {...h} />);
   return h;
 }
 const card = (n: string) => screen.getByRole('region', { name: n });
@@ -56,8 +56,22 @@ describe('LeftPanel effects', () => {
 
   it('remaining placeholders stay disabled', () => {
     setup();
-    for (const n of ['자동차 번호판', '대상 선택', '기본값으로 초기화', '고급 설정', '타원', '다각형']) {
+    for (const n of ['자동차 번호판', '대상 선택', '기본값으로 초기화', '고급 설정']) {
       expect(screen.getByRole('button', { name: n })).toBeDisabled();
     }
+  });
+});
+
+describe('LeftPanel draw tools', () => {
+  it('타원/다각형 are enabled, reflect the active tool with aria-pressed, and report the choice', () => {
+    const onSelectTool = vi.fn();
+    render(
+      <LeftPanel review={null} reviewCount={0} drawTool="polygon" effects={fx()} filterSupported onDefault={vi.fn()} onBackground={vi.fn()} onSelectTool={onSelectTool} />,
+    );
+    expect(screen.getByRole('button', { name: '다각형' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '타원' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '박스 그리기' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '타원' }));
+    expect(onSelectTool).toHaveBeenCalledWith('ellipse');
   });
 });
