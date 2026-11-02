@@ -104,6 +104,13 @@ function outward(r: Region, rect: Rect, srcW: number, srcH: number): [number, nu
   return [x0, y0, Math.ceil(rect.x + dx + dw) - x0, Math.ceil(rect.y + dy + dh) - y0];
 }
 
+/** The content rect rounded OUTWARD to whole pixels, so its outer pixels are fully covered (no alpha<255 edge row). */
+function outwardRect(rect: Rect): Rect {
+  const x0 = Math.floor(rect.x);
+  const y0 = Math.floor(rect.y);
+  return { x: x0, y: y0, w: Math.ceil(rect.x + rect.w) - x0, h: Math.ceil(rect.y + rect.h) - y0 };
+}
+
 function gridOf(w: number, h: number, block: number) {
   const b = Math.max(1, block);
   return { cols: Math.max(1, Math.ceil(w / b)), rows: Math.max(1, Math.ceil(h / b)), block: b };
@@ -119,27 +126,27 @@ function drawBackground(
   srcW: number,
   srcH: number,
 ): void {
+  // whole-pixel rect: the background covers the outer pixel row/column of the fractional content rect
+  const wr = outwardRect(rect);
   ctx.save();
   ctx.beginPath();
-  ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  ctx.rect(wr.x, wr.y, wr.w, wr.h);
   ctx.clip();
   try {
     if (eff.type === 'color') {
       ctx.fillStyle = eff.color;
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillRect(wr.x, wr.y, wr.w, wr.h);
       return;
     }
     const vx = src.width / srcW;
     const vy = src.height / srcH;
-    const sx = rect.w / srcW;
-    const sy = rect.h / srcH;
     // opaque mosaic of the whole frame (also the blur fallback and the blur's underlay)
     const g = gridOf(srcW, srcH, backgroundBlock(srcW, srcH, eff.strength));
     off.width = g.cols;
     off.height = g.rows;
     mosaicInto(octx, src, [0, 0, srcW, srcH], g.block, vx, vy, g);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(off, 0, 0, g.cols, g.rows, rect.x, rect.y, g.cols * g.block * sx, g.rows * g.block * sy);
+    ctx.drawImage(off, 0, 0, g.cols, g.rows, wr.x, wr.y, wr.w, wr.h);
     if (eff.type === 'blur' && supportsCanvasFilter(octx)) {
       const qw = Math.max(1, Math.ceil(srcW / 4));
       const qh = Math.max(1, Math.ceil(srcH / 4));
@@ -149,7 +156,7 @@ function drawBackground(
       octx.drawImage(src.image, 0, 0, src.width, src.height, 0, 0, qw, qh);
       octx.filter = 'none';
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(off, 0, 0, qw, qh, rect.x, rect.y, rect.w, rect.h);
+      ctx.drawImage(off, 0, 0, qw, qh, wr.x, wr.y, wr.w, wr.h);
     }
   } finally {
     ctx.restore();
@@ -225,8 +232,9 @@ function drawRegion(
   const [ox, oy, ow, oh] = outward(r, rect, srcW, srcH);
   ctx.save();
   try {
+    const wr = outwardRect(rect);
     ctx.beginPath();
-    ctx.rect(rect.x, rect.y, rect.w, rect.h);
+    ctx.rect(wr.x, wr.y, wr.w, wr.h);
     ctx.clip();
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(off, 0, 0, w, h, ox, oy, ow, oh);
@@ -258,8 +266,9 @@ export function drawFrameEffects(
   const octx = off.getContext('2d');
   if (!octx || !src.ready || !src.width || !src.height) {
     if (background) {
+      const wr = outwardRect(rect);
       ctx.fillStyle = GREY;
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillRect(wr.x, wr.y, wr.w, wr.h);
     }
     regions.forEach(grey);
     return;
@@ -268,8 +277,9 @@ export function drawFrameEffects(
     try {
       drawBackground(ctx, octx, src, off, background, rect, srcW, srcH);
     } catch {
+      const wr = outwardRect(rect);
       ctx.fillStyle = GREY;
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillRect(wr.x, wr.y, wr.w, wr.h);
     }
   }
   for (const r of regions) {

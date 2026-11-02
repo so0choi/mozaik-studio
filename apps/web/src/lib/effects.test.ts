@@ -253,3 +253,32 @@ describe('outward rounding', () => {
     expect(fill.args).toEqual(final.args.slice(5));
   });
 });
+
+describe('fractional content rect', () => {
+  // letterboxed content rect with fractional edges; rounded OUTWARD: x 10..935, y 0..521
+  const frac = { x: 10.25, y: 0.5, w: 924.5, h: 519.75 };
+  const whole = [10, 0, 925, 521];
+  const runFrac = (background: Effect | null, src = ready) => drawFrameEffects(ctx, src, off, [], background, frac, 640, 360);
+
+  it('background clip and colour fill use the whole-pixel rect covering the fractional one', () => {
+    runFrac(color);
+    const clips = calls.filter((c) => c.canvas === 'main' && c.fn === 'rect');
+    expect(clips.map((c) => c.args)).toEqual([whole]);
+    expect(calls.find((c) => c.canvas === 'main' && c.fn === 'fillRect')!.args).toEqual(whole);
+  });
+
+  it('mosaic and blur backgrounds draw onto the whole-pixel rect', () => {
+    for (const bg of [mosaic, blur]) {
+      calls = [];
+      runFrac(bg);
+      const draws = calls.filter((c) => c.canvas === 'main' && c.fn === 'drawImage');
+      expect(draws.length).toBeGreaterThan(0);
+      for (const d of draws) expect(d.args.slice(5)).toEqual(whole);
+    }
+  });
+
+  it('not-ready background grey fill uses the whole-pixel rect', () => {
+    runFrac(mosaic, notReady);
+    expect(calls[0]).toMatchObject({ fn: 'fillRect', args: whole });
+  });
+});
