@@ -32,6 +32,8 @@ export interface ReviewItem {
   startFrame: number;
   endFrame: number;
   box: Box;
+  /** absent on old jobs = required; crossing never has it */
+  severity?: 'required' | 'advisory';
 }
 
 export interface ReviewDoc {

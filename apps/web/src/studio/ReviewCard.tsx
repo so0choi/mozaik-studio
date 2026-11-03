@@ -197,6 +197,9 @@ interface UpcomingProps {
   whoOf: (item: ReviewItem) => string;
   isSuspect: (item: ReviewItem) => boolean;
   onSelect: (id: string) => void;
+  /** advisory items: listed for reference, never block render */
+  advisory?: ReviewItem[];
+  onSeekItem?: (id: string) => void;
 }
 
 const MAX_UPCOMING = 9;
@@ -212,6 +215,8 @@ function typeCounts(items: ReviewItem[]) {
 
 function ReviewUpcomingInner(p: UpcomingProps) {
   const [open, setOpen] = useState(false);
+  const [advOpen, setAdvOpen] = useState(false);
+  const advisory = p.advisory ?? [];
   const shown = p.groups.slice(0, MAX_UPCOMING);
   return (
     <section className="up-wrap" aria-label="다음 항목">
@@ -239,6 +244,27 @@ function ReviewUpcomingInner(p: UpcomingProps) {
         <p className="hidden-note" data-testid="hidden-note">
           지금 가림 상태로는 노출 위험이 없는 항목 {p.hiddenCount}개는 숨겼습니다
         </p>
+      )}
+      {advisory.length > 0 && (
+        <>
+          <button type="button" className="fold" aria-expanded={advOpen} aria-controls="advlist" onClick={() => setAdvOpen(!advOpen)}>
+            <span>
+              참고 {advisory.length}곳 · 렌더를 막지 않음
+            </span>
+            <svg className="chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+          <ul className="dl" id="advlist" data-testid="advisory-list" hidden={!advOpen}>
+            {advisory.map((a) => (
+              <li key={a.id}>
+                <button type="button" onClick={() => p.onSeekItem?.(a.id)}>
+                  {TYPE_LABEL[a.type]} · {p.whoOf(a)} · {formatTime(a.startFrame / p.fps)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       <button type="button" className="fold" aria-expanded={open} aria-controls="dlist" onClick={() => setOpen(!open)}>
         <span>확인 완료 ({p.done.length})</span>

@@ -1,13 +1,18 @@
 """review.json: low confidence, gap and crossing items (spec 3.4)."""
 from __future__ import annotations
 
-from .tracker import Track, iou
+from statistics import median
+
+from .tracker import EXPAND_RATIO, Track, iou
 
 LOW_SCORE = 0.6
 LOW_MIN_FRAMES = 15
 CROSS_IOU = 0.1
 EDGE_MARGIN = 0.03  # box within 3% of the frame border = the face can have walked out
 CUT_SLACK = 2  # frames
+# below these a gap/low_confidence item is advisory (never blocks render); measured on the 115 s Pexels test video, required items 99 -> 30
+REQUIRED_MIN_DETS = 3
+REQUIRED_MIN_FACE_PX = 40
 
 
 def _runs(frames: list[int]) -> list[tuple[int, int]]:
@@ -75,6 +80,16 @@ def _trailing_gap_explained(track: Track, last_real: int, hold_end: int, fps: in
     return False
 
 
+def _severity(track: Track, suspects) -> str:
+    real = [f for f in track.scores if f in track.frames and f not in track.held]
+    if len(real) < REQUIRED_MIN_DETS or track.id in suspects:
+        return "advisory"
+    sides = [min(track.frames[f][2], track.frames[f][3]) / (1 + EXPAND_RATIO) for f in track.frames]
+    if sides and median(sides) < REQUIRED_MIN_FACE_PX:
+        return "advisory"
+    return "required"
+
+
 def _inside(inner, outer) -> bool:
     return (
         inner[0] >= outer[0] and inner[1] >= outer[1]
@@ -82,13 +97,16 @@ def _inside(inner, outer) -> bool:
     )
 
 
-def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: int | None = None, cuts=frozenset()) -> dict:
+def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: int | None = None, cuts=frozenset(), suspects=frozenset()) -> dict:
     """Without frame_size/frame_count/cuts every held run is reported (old behaviour)."""
-    raw: list[dict] = []  # {type, trackIds, start, end, box}
+    raw: list[dict] = []  # {type, trackIds, start, end, box, severity?}
 
-    def add(kind, ids, a, b, boxes_at):
+    def add(kind, ids, a, b, boxes_at, severity=None):
         mid = (a + b) // 2
-        raw.append({"type": kind, "trackIds": ids, "start": a, "end": b, "box": _union(boxes_at(mid))})
+        r = {"type": kind, "trackIds": ids, "start": a, "end": b, "box": _union(boxes_at(mid))}
+        if severity is not None:
+            r["severity"] = severity
+        raw.append(r)
 
     by_id = {t.id: t for t in tracks}
     first_real: dict[int, list[Track]] = {}
@@ -98,7 +116,7 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
             first_real.setdefault(min(r), []).append(t)
     for t in tracks:
         for a, b in _low_confidence(t):
-            add("low_confidence", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]])
+            add("low_confidence", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]], _severity(t, suspects))
         real = [f for f in t.scores if f in t.frames and f not in t.held]
         last_real = max(real) if real else None
         for a, b in _runs([f for f in t.held if f in t.frames]):
@@ -116,7 +134,7 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
                 n = min(f for f in real if f > b)
                 if _inside(t.frames[n], t.frames[b]):
                     continue
-            add("gap", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]])
+            add("gap", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]], _severity(t, suspects))
 
     per_frame: dict[int, list[tuple[str, tuple]]] = {}
     for t in tracks:
@@ -138,21 +156,23 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
             )
 
     # merge neighbours of the same kind and tracks that are within 1 second of each other
-    raw.sort(key=lambda r: (r["type"], r["trackIds"], r["start"]))
+    raw.sort(key=lambda r: (r["type"], r["trackIds"], r.get("severity", ""), r["start"]))
     merged: list[dict] = []
     for r in raw:
         last = merged[-1] if merged else None
-        if last and last["type"] == r["type"] and last["trackIds"] == r["trackIds"] and r["start"] - last["end"] <= fps:
+        if last and last["type"] == r["type"] and last["trackIds"] == r["trackIds"] and last.get("severity") == r.get("severity") and r["start"] - last["end"] <= fps:
             last["end"] = max(last["end"], r["end"])
             last["box"] = _union([last["box"], r["box"]])
         else:
             merged.append(dict(r))
     merged.sort(key=lambda r: (r["start"], r["type"], r["trackIds"]))
-    items = [
-        {
+    items = []
+    for i, r in enumerate(merged, 1):
+        item = {
             "id": f"r{i}", "type": r["type"], "trackIds": r["trackIds"],
             "startFrame": r["start"], "endFrame": r["end"], "box": r["box"],
         }
-        for i, r in enumerate(merged, 1)
-    ]
+        if "severity" in r:
+            item["severity"] = r["severity"]
+        items.append(item)
     return {"items": items}

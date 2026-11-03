@@ -97,7 +97,7 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     tracks, thumbs, suspects, cuts = detect_and_track(job_dir / "normalized.mp4", meta, detector, progress)
     info = thumbs.write([t.id for t in tracks], job_dir)
     atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, suspects))
-    atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps, (meta.width, meta.height), meta.frame_count, cuts))
+    atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps, (meta.width, meta.height), meta.frame_count, cuts, suspects))
     if progress:
         progress("analyzing", 100)
 

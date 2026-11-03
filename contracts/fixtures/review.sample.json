@@ -3,6 +3,7 @@
   {
    "id": "r1",
    "type": "low_confidence",
+   "severity": "required",
    "trackIds": [
     "t3"
    ],

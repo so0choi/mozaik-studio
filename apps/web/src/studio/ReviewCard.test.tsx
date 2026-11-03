@@ -93,3 +93,26 @@ describe('ReviewUpcoming groups', () => {
     expect(screen.getByText('외 3구간')).toBeInTheDocument();
   });
 });
+
+describe('ReviewUpcoming advisory fold', () => {
+  const adv = [{ ...item('a1', 30), severity: 'advisory' as const }, { ...item('a2', 90, 'low_confidence'), severity: 'advisory' as const }];
+  const base = { groups: [], totalGroups: 0, total: 0, done: [], hiddenCount: 0, fps: 30, whoOf: () => '인물 1', isSuspect: () => false, onSelect: noop };
+
+  it('is hidden when there are no advisory items', () => {
+    render(<ReviewUpcoming {...base} advisory={[]} onSeekItem={noop} />);
+    expect(screen.queryByText(/렌더를 막지 않음/)).toBeNull();
+  });
+
+  it('lists advisory items collapsed by default and seeks on click', () => {
+    const onSeekItem = vi.fn();
+    render(<ReviewUpcoming {...base} advisory={adv} onSeekItem={onSeekItem} />);
+    const fold = screen.getByRole('button', { name: /참고 2곳 · 렌더를 막지 않음/ });
+    expect(fold).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('advisory-list')).not.toBeVisible();
+    fireEvent.click(fold);
+    expect(screen.getByTestId('advisory-list')).toBeVisible();
+    const row = screen.getByRole('button', { name: /낮은 신뢰도 · 인물 1/ });
+    fireEvent.click(row);
+    expect(onSeekItem).toHaveBeenCalledWith('a2');
+  });
+});

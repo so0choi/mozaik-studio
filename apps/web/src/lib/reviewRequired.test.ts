@@ -39,3 +39,18 @@ describe('isRequired', () => {
     expect(requiredItems(items, ed([])).map((i) => i.id)).toEqual(['g']);
   });
 });
+
+describe('severity', () => {
+  const sev = (type: ReviewType, severity: 'required' | 'advisory' | undefined, trackIds = ['t1']): ReviewItem => ({ ...item('s', type, trackIds), severity });
+  it('advisory gap/low_confidence is never required', () => {
+    expect(isRequired(sev('gap', 'advisory'), ed([]))).toBe(false);
+    expect(isRequired(sev('low_confidence', 'advisory'), ed([]))).toBe(false);
+  });
+  it('required or missing severity keeps today behaviour', () => {
+    expect(isRequired(sev('gap', 'required'), ed([]))).toBe(true);
+    expect(isRequired(sev('gap', undefined), ed([]))).toBe(true);
+  });
+  it('crossing ignores a severity field', () => {
+    expect(isRequired(sev('crossing', 'advisory', ['t1', 't2']), ed(['t1']))).toBe(true);
+  });
+});

@@ -208,3 +208,61 @@ def test_low_confidence_and_crossing_unchanged():
     b = mk("t2", range(0, 20), box=(170, 100, 100, 100))
     types = sorted(i["type"] for i in build_review([a, b], 30, frame_size=SIZE, frame_count=300)["items"])
     assert types == ["crossing", "low_confidence"]
+
+
+# --- severity (required vs advisory) ---
+
+def _gap_severity(t, **kw):
+    items = build_review([t], 30, **kw)["items"]
+    gaps = [i for i in items if i["type"] == "gap"]
+    assert len(gaps) == 1
+    return gaps[0]["severity"]
+
+
+def test_severity_few_detections_is_advisory():
+    # 2 real dets (frames 0 and 4) around a held run
+    t = mk("t1", range(0, 5), held=range(1, 4))
+    refound_elsewhere(t)
+    assert _gap_severity(t) == "advisory"
+
+
+def test_severity_three_detections_is_required():
+    t = mk("t1", range(0, 6), held=range(1, 4))  # real: 0, 4, 5
+    refound_elsewhere(t)
+    assert _gap_severity(t) == "required"
+
+
+def test_severity_small_face_is_advisory_boundary():
+    # raw side = min(w,h)/1.25 ; 50 -> 40 (required), 49 -> 39.2 (advisory)
+    big = refound_elsewhere(mk("t1", range(0, 30), box=(100, 100, 50, 50), held=range(10, 15)))
+    small = refound_elsewhere(mk("t1", range(0, 30), box=(100, 100, 49, 49), held=range(10, 15)))
+    assert _gap_severity(big) == "required"
+    assert _gap_severity(small) == "advisory"
+
+
+def test_severity_suspect_is_advisory():
+    t = refound_elsewhere(mk("t1", range(0, 30), held=range(10, 15)))
+    assert _gap_severity(t, suspects={"t1"}) == "advisory"
+    assert _gap_severity(t, suspects={"other"}) == "required"
+
+
+def test_low_confidence_has_severity():
+    t = mk("t1", range(0, 20), score=0.5)
+    assert build_review([t], 30)["items"][0]["severity"] == "required"
+    assert build_review([t], 30, suspects={"t1"})["items"][0]["severity"] == "advisory"
+
+
+def test_crossing_has_no_severity():
+    a = mk("t1", range(0, 20), box=(100, 100, 100, 100))
+    b = mk("t2", range(0, 20), box=(120, 100, 100, 100))
+    items = build_review([a, b], 30, suspects={"t1", "t2"})["items"]
+    crossings = [i for i in items if i["type"] == "crossing"]
+    assert crossings and all("severity" not in i for i in crossings)
+
+
+def test_same_severity_gaps_within_one_second_still_merge():
+    # severity is per track, so two gaps of one track share it and merge as before
+    t = mk("t1", range(0, 40), held=list(range(10, 14)) + list(range(20, 24)))
+    refound_elsewhere(t)
+    gaps = [i for i in build_review([t], 30)["items"] if i["type"] == "gap"]
+    assert len(gaps) == 1 and gaps[0]["severity"] == "required"

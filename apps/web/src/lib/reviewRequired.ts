@@ -7,6 +7,8 @@ import type { Edits, ReviewItem } from './types';
  */
 export function isRequired(item: ReviewItem, edits: Pick<Edits, 'visible' | 'reviewed'>): boolean {
   if (edits.reviewed.includes(item.id)) return false;
+  // advisory items are listed for reference but never block render; crossing keeps its visibility rule
+  if (item.type !== 'crossing' && item.severity === 'advisory') return false;
   const visible = new Set(edits.visible);
   const visibleAny = (x: string) => visible.has(x) || visible.has(`${x}a`) || visible.has(`${x}b`);
   const maskedAny = (x: string) => !(visible.has(x) || (visible.has(`${x}a`) && visible.has(`${x}b`)));

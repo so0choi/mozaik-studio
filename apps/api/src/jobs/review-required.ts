@@ -6,6 +6,7 @@ export interface ReviewItemLike {
   id: string;
   type: string;
   trackIds: string[];
+  severity?: string;
 }
 export interface EditsLike {
   visible?: string[];
@@ -14,6 +15,8 @@ export interface EditsLike {
 
 export function isRequired(item: ReviewItemLike, edits: EditsLike): boolean {
   if (new Set(edits.reviewed ?? []).has(item.id)) return false;
+  // advisory items are listed for reference but never block render; crossing keeps its visibility rule
+  if (item.type !== 'crossing' && item.severity === 'advisory') return false;
   const visible = new Set(edits.visible ?? []);
   const visibleAny = (x: string) => visible.has(x) || visible.has(x + 'a') || visible.has(x + 'b');
   const maskedAny = (x: string) => !(visible.has(x) || (visible.has(x + 'a') && visible.has(x + 'b')));

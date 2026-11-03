@@ -149,6 +149,7 @@ export class JobsService {
           id: String(i.id),
           type: String(i.type),
           trackIds: Array.isArray(i.trackIds) ? i.trackIds.map(String) : [],
+          severity: typeof i.severity === 'string' ? i.severity : undefined,
         }))
       : [];
   }

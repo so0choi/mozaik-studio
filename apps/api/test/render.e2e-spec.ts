@@ -57,6 +57,19 @@ describe('render gate, manual, output (A3)', () => {
     expect(q.map((s: string) => JSON.parse(s))).toEqual([{ jobId: id }]);
   });
 
+  it('advisory review items never block render', async () => {
+    seed(ctx, id, {
+      'review.json': {
+        items: [
+          { id: 'r1', type: 'gap', severity: 'advisory', trackIds: ['t1'], startFrame: 1, endFrame: 5, box: [1, 1, 2, 2] },
+          { id: 'r2', type: 'low_confidence', severity: 'advisory', trackIds: ['t1'], startFrame: 10, endFrame: 20, box: [1, 1, 2, 2] },
+        ],
+      },
+    });
+    expect((await putEdits({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [] })).status).toBe(200);
+    expect((await post('/render')).status).toBe(202);
+  });
+
   it('duplicate render request -> 409 and only one queue message', async () => {
     await putEdits({ version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: ['r1', 'r2'] });
     expect((await post('/render')).status).toBe(202);
