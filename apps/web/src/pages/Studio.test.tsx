@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,7 +8,7 @@ import { installFetch, type Call, type Handler } from '../test/mockFetch';
 import { Studio } from './Studio';
 
 const job = (over: Partial<Job> = {}): Job => ({
-  id: 'j1', filename: 'clip.mp4', createdAt: new Date().toISOString(), state: 'ready', progress: 100, error: null, hasOutput: false, ...over,
+  id: 'j1', filename: 'clip.mp4', createdAt: new Date().toISOString(), state: 'ready', progress: 100, error: null, hasOutput: false, outputStale: false, ...over,
 });
 const emptyEdits: Edits = { version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [] };
 
@@ -949,6 +949,19 @@ describe('Studio right column', () => {
     expect(screen.queryByTestId('target-detail')).toBeNull();
   });
 
+  it('the toolbar chip shows the real effect: 원본 when visible, otherwise the effect name', async () => {
+    setup();
+    await userEvent.click(await card('t2'));
+    const detail = await screen.findByTestId('target-detail');
+    const chip = () => document.querySelector('.tchip.fx')!;
+    expect(chip()).toHaveTextContent('모자이크');
+    await userEvent.click(within(detail).getByRole('button', { name: '블러' }));
+    expect(chip()).toHaveTextContent('블러');
+    await userEvent.click(within(detail).getByRole('button', { name: '원본 · 가림 해제' }));
+    expect(chip()).toHaveTextContent('원본');
+    expect(chip().className).toContain('v');
+  });
+
   it('left panel: auto blur switch is on and disabled; 사각형 is the box tool', async () => {
     setup();
     await card('t1');
@@ -1044,6 +1057,107 @@ describe('Studio save-gated render', () => {
     btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(await screen.findByRole('button', { name: /괜찮음/ })).toBeInTheDocument();
   });
+
+  it('save fails once: the render click shows the error and sends no POST; the next click saves the latest edits and renders once', async () => {
+    let n = 0;
+    const calls = setup({
+      edits: resolved,
+      extra: (c) => {
+        if (c.path === '/api/jobs/j1/edits' && c.method === 'PUT') return ++n === 1 ? { status: 500, body: { message: '서버 오류' } } : { body: {} };
+        if (c.path === '/api/jobs/j1/render') return { status: 202, body: {} };
+        return undefined;
+      },
+    });
+    await toggle('t1', '인물 1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('저장하지 못해 렌더를 시작하지 않았습니다.');
+    expect(renders(calls).length).toBe(0);
+    await toggle('t3', '인물 3');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    await waitFor(() => expect(renders(calls).length).toBe(1));
+    const last = puts(calls)[puts(calls).length - 1].body as Edits;
+    expect(last.visible).toEqual(expect.arrayContaining(['t1', 't3']));
+    expect(calls.indexOf(renders(calls)[0])).toBeGreaterThan(calls.indexOf(puts(calls)[puts(calls).length - 1]));
+    await sleep(100);
+    expect(renders(calls).length).toBe(1);
+  });
+
+  it('unmounting with an unsaved edit sends the final save through the save chain', async () => {
+    const calls = setup({ edits: resolved });
+    await toggle('t1', '인물 1');
+    cleanup();
+    await waitFor(() => expect(puts(calls).length).toBe(1));
+    expect((puts(calls)[0].body as Edits).visible).toEqual(['t1']);
+    await sleep(700);
+    expect(puts(calls).length).toBe(1); // the cleared debounce timer does not save again
+  });
+
+  it('two consecutive failing saves send no POST /render and the error stays', async () => {
+    const calls = setup({
+      edits: resolved,
+      extra: (c) =>
+        c.path === '/api/jobs/j1/edits' && c.method === 'PUT' ? { status: 500, body: { message: '서버 오류' } } : undefined,
+    });
+    await toggle('t1', '인물 1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('저장하지 못해');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    await waitFor(() => expect(puts(calls).length).toBeGreaterThanOrEqual(2));
+    await sleep(100);
+    expect(renders(calls).length).toBe(0);
+    expect(screen.getByRole('alert')).toHaveTextContent('저장하지 못해');
+  });
+
+  it('an edit made while rendering does not offer the stale output and tells the user to render again', async () => {
+    let requested = false;
+    setup({
+      edits: resolved,
+      extra: (c) => {
+        if (c.path === '/api/jobs/j1/render') {
+          requested = true;
+          return { status: 202, body: {} };
+        }
+        if (c.path === '/api/jobs/j1' && c.method === 'GET' && requested) return { body: job({ state: 'rendered', hasOutput: true }) };
+        return undefined;
+      },
+    });
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    expect(await screen.findByText('렌더 중')).toBeInTheDocument();
+    await toggle('t3', '인물 3'); // edit during rendering
+    await waitFor(() => expect(document.querySelector('.sr[aria-live]')).toHaveTextContent('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.'), { timeout: 6000 });
+    expect(screen.queryByRole('link', { name: '다운로드' })).toBeNull();
+  }, 10000);
+
+  it('after a reload, a render that predates the saved edits is not offered and the notice shows', async () => {
+    setup({ edits: resolved, job: job({ state: 'rendered', hasOutput: false, outputStale: true }) });
+    await card('t1');
+    await waitFor(() => expect(document.querySelector('.sr[aria-live]')).toHaveTextContent('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.'));
+    expect(screen.queryByRole('link', { name: '다운로드' })).toBeNull();
+    expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeInTheDocument();
+  });
+
+  it('after a reload, a render matching the saved edits is offered for download', async () => {
+    setup({ edits: resolved, job: job({ state: 'rendered', hasOutput: true }) });
+    await card('t1');
+    expect(await screen.findByRole('link', { name: '다운로드' })).toBeInTheDocument();
+  });
+
+  it('a render that finishes stale on the server is not offered even if nothing changed locally', async () => {
+    let requested = false;
+    setup({
+      edits: resolved,
+      extra: (c) => {
+        if (c.path === '/api/jobs/j1/render') { requested = true; return { status: 202, body: {} }; }
+        if (c.path === '/api/jobs/j1' && c.method === 'GET' && requested) return { body: job({ state: 'rendered', hasOutput: false, outputStale: true }) };
+        return undefined;
+      },
+    });
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: '렌더 후 다운로드' }));
+    await waitFor(() => expect(document.querySelector('.sr[aria-live]')).toHaveTextContent('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.'), { timeout: 6000 });
+    expect(screen.queryByRole('link', { name: '다운로드' })).toBeNull();
+  }, 10000);
 });
 
 describe('Studio mask picker', () => {

@@ -125,7 +125,10 @@ export interface Job {
   state: JobState;
   progress: number;
   error: string | null;
+  /** output.mp4 exists and was rendered from the current saved edits (server-checked). */
   hasOutput: boolean;
+  /** output.mp4 exists but the saved edits changed after it was rendered. */
+  outputStale: boolean;
 }
 
 export interface Person {

@@ -3,6 +3,7 @@
 import type { Edits, Effect, EffectType, Effects } from './types';
 
 const EFFECT_TYPES: readonly EffectType[] = ['mosaic', 'blur', 'color'];
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 export const DEFAULT_COLOR = '#000000';
 
 export function normalizeEffect(eff: unknown): Effect {
@@ -21,11 +22,15 @@ export function normalizeEffect(eff: unknown): Effect {
 export function normalizeEffects(edits: Partial<Edits> | null | undefined): Effects {
   const fx = (edits?.effects ?? {}) as Partial<Effects>;
   const bg = fx.background;
-  const overrides: Record<string, Effect> = {};
-  for (const [k, v] of Object.entries(fx.overrides ?? {})) overrides[k] = normalizeEffect(v);
+  // null prototype + reserved keys skipped: a "__proto__" key can never reach a setter or the prototype
+  const overrides: Record<string, Effect> = Object.create(null);
+  for (const [k, v] of Object.entries(fx.overrides ?? {})) {
+    if (RESERVED_KEYS.has(k)) continue;
+    overrides[k] = normalizeEffect(v);
+  }
   return {
     default: normalizeEffect(fx.default),
-    background: bg && typeof bg === 'object' && Object.keys(bg).length > 0 ? normalizeEffect(bg) : null,
+    background: bg && typeof bg === 'object' && !Array.isArray(bg) && Object.keys(bg).length > 0 ? normalizeEffect(bg) : null,
     overrides,
   };
 }

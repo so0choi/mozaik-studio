@@ -33,7 +33,7 @@ def normalize_effects(edits: dict) -> dict:
     overrides = fx.get("overrides") or {}
     return {
         "default": normalize_effect(fx.get("default")),
-        "background": normalize_effect(bg) if bg else None,
+        "background": normalize_effect(bg) if isinstance(bg, dict) and bg else None,
         "overrides": {k: normalize_effect(v) for k, v in overrides.items()},
     }
 
@@ -88,16 +88,16 @@ def _hex_to_bgr(color: str) -> tuple[int, int, int]:
 
 
 def shape_mask(region: dict, frame_w: int, frame_h: int) -> tuple[slice, slice, np.ndarray]:
-    """Frame-clipped (rows, cols, bool mask). The bitmap is drawn for the unclipped box, then cut."""
+    """Frame-clipped (rows, cols, bool mask). Only the frame-visible window of the box is rasterized."""
     x, y, w, h = (int(v) for v in region["box"][:4])
-    pts = region.get("points")
-    rel = [[px - x, py - y] for px, py in pts] if pts else None
-    bm = shape_bitmap(region["shape"], w, h, rel)
     x0, y0 = max(0, x), max(0, y)
     x1, y1 = min(frame_w, x + w), min(frame_h, y + h)
     if x1 <= x0 or y1 <= y0:
         return slice(0, 0), slice(0, 0), np.zeros((0, 0), bool)
-    return slice(y0, y1), slice(x0, x1), bm[y0 - y : y1 - y, x0 - x : x1 - x]
+    pts = region.get("points")
+    rel = [[px - x, py - y] for px, py in pts] if pts else None
+    bm = shape_bitmap(region["shape"], w, h, rel, (x0 - x, y0 - y, x1 - x, y1 - y))
+    return slice(y0, y1), slice(x0, x1), bm
 
 
 def apply_region(src: np.ndarray, out: np.ndarray, region: dict) -> None:

@@ -331,3 +331,101 @@ def test_blur_region_partially_outside_frame_fills_mask(box, shape):
     assert inside.any()
     assert (out[inside] == 200).all()
     assert (out[~inside] == 0).all()
+
+
+def test_compose_frame_logs_each_failing_region_once_per_render(monkeypatch):
+    src = _noise() + 1
+    real = fx.apply_region
+
+    def boom(s, o, r):
+        if r["id"] == "bad":
+            raise RuntimeError("boom")
+        real(s, o, r)
+
+    monkeypatch.setattr("mosaic_worker.render.apply_region", boom)
+    logs, seen = [], set()
+    regions = [_reg((10, 10, 20, 20), _eff(), rid="bad")]
+    for _ in range(5):
+        out = compose_frame(src, regions, None, logs.append, seen)
+        assert (out[10:30, 10:30] == 0).all()  # still blacked out every frame
+    assert len(logs) == 1 and "bad" in logs[0]
+
+
+def test_render_failure_reaps_ffmpeg_and_removes_tmp(tmp_path, face_image, model_path, monkeypatch):
+    import subprocess
+    _setup_job(tmp_path, face_image, model_path, False)
+    (tmp_path / "edits.json").write_text(json.dumps(
+        {"version": 1, "visible": [], "groups": [], "splits": [], "manual": [], "reviewed": [],
+         "effects": {"default": _eff(), "background": _eff("blur"), "overrides": {}}}))
+    procs = []
+    real_popen = subprocess.Popen
+
+    def spy(*a, **k):
+        p = real_popen(*a, **k)
+        procs.append(p)
+        return p
+
+    monkeypatch.setattr("mosaic_worker.render.subprocess.Popen", spy)
+    calls = {"n": 0}
+
+    def boom(src, effect):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise RuntimeError("bg boom")
+        return src.copy()
+
+    monkeypatch.setattr("mosaic_worker.render.apply_background", boom)
+    with pytest.raises(UserFacingError):
+        render(tmp_path)
+    assert not (tmp_path / "output.tmp.mp4").exists()
+    assert not (tmp_path / "output.mp4").exists()
+    assert procs and all(p.poll() is not None for p in procs)  # waited: no zombie
+    assert "frame 2 failed" in (tmp_path / "render.log").read_text()
+
+
+def test_normalize_effects_background_only_when_dict():
+    from mosaic_worker.effects import normalize_effects
+    mk = lambda bg: normalize_effects({"effects": {"background": bg}})["background"]
+    assert mk("blur") is None and mk(1) is None and mk([1]) is None and mk(None) is None
+    assert mk({"type": "blur", "strength": 2})["type"] == "blur"
+
+
+def test_normalize_effects_empty_dict_background_is_none_like_the_web():
+    from mosaic_worker.effects import normalize_effects
+    assert normalize_effects({"effects": {"background": {}}})["background"] is None
+
+
+def test_render_binds_output_to_the_edits_it_rendered(tmp_path, face_image, model_path):
+    _setup_job(tmp_path, face_image, model_path, False)
+    edits = {"version": 1, "visible": ["zz"], "groups": [], "splits": [], "manual": [], "reviewed": []}
+    (tmp_path / "edits.json").write_text(json.dumps(edits))
+    (tmp_path / "output.edits.json").write_text('{"stale": true}')  # from an earlier render
+    render(tmp_path)
+    assert json.loads((tmp_path / "output.edits.json").read_text()) == edits
+    assert not list(tmp_path.glob("output.edits.json.*"))
+
+
+def test_render_without_edits_file_binds_the_default_edits(tmp_path, face_image, model_path):
+    _setup_job(tmp_path, face_image, model_path, False)
+    (tmp_path / "edits.json").unlink(missing_ok=True)
+    render(tmp_path)
+    assert json.loads((tmp_path / "output.edits.json").read_text()) == {
+        "version": 1, "visible": [], "groups": [], "splits": [], "manual": [], "reviewed": [],
+        "effects": {"default": {"type": "mosaic", "strength": 1}, "background": None, "overrides": {}}}  # == the API's default
+
+
+def test_failed_render_leaves_no_binding_for_the_old_output(tmp_path, face_image, model_path, monkeypatch):
+    _setup_job(tmp_path, face_image, model_path, False)
+    render(tmp_path)
+    assert (tmp_path / "output.edits.json").exists()
+    def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr("mosaic_worker.render.apply_background", boom)
+    (tmp_path / "edits.json").write_text(json.dumps(
+        {"version": 1, "visible": [], "groups": [], "splits": [], "manual": [], "reviewed": [],
+         "effects": {"default": _eff("color", 1, "#ff0000"), "background": _eff("blur", 5), "overrides": {}}}))
+    with pytest.raises(UserFacingError):
+        render(tmp_path)
+    # the old output.mp4 was not touched, so its binding must still describe it
+    bound = json.loads((tmp_path / "output.edits.json").read_text())
+    assert bound["effects"]["background"] is None  # the first render's edits, not the failed render's

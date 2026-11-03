@@ -1,4 +1,5 @@
 import { normalizeEffects } from './effectParams';
+import { effectFor } from './masks';
 import { people } from './people';
 import { pieces, splitFrames, visibleIds } from './pieces';
 import type { Box, Edits, Effect, ManualEdit, Person, TracksDoc } from './types';
@@ -128,17 +129,27 @@ export function groupPersons(doc: TracksDoc, edits: Edits, keys: string[]): Edit
   const fx = effectsOf(edits);
   const overrides = { ...fx.overrides };
   const moved = overrides[first.key];
-  for (const g of edits.groups) if (dropKeys.has(g.id)) delete overrides[g.id];
-  if (moved) {
-    delete overrides[first.key];
-    overrides[id] = moved;
-  }
-  return {
+  // no member (piece or track) or dissolved-group override may survive: a piece override would outrank the group
+  const allPieces = pieces(doc, edits);
+  const memberIds = new Set(allPieces.filter((pc) => ids.has(pc.id)).map((pc) => pc.trackId));
+  for (const k of [...dropKeys, ...ids, ...memberIds]) delete overrides[k];
+  if (moved) overrides[id] = moved;
+  const next: Edits = {
     ...edits,
     effects: { ...fx, overrides },
     groups: [...edits.groups.filter((g) => !dropKeys.has(g.id)), group],
     visible: allVisible ? [...visible, ...trackIds] : visible,
   };
+  // a parent track's override also styled its split pieces that were NOT grouped: deleting it must not
+  // change them, so copy the effect they had onto each such piece (never over its own override or group)
+  for (const pc of allPieces) {
+    if (ids.has(pc.id) || !memberIds.has(pc.trackId)) continue;
+    const before = effectFor(pc.id, pc.trackId, edits);
+    if (JSON.stringify(effectFor(pc.id, pc.trackId, next)) !== JSON.stringify(before)) {
+      overrides[pc.id] = before;
+    }
+  }
+  return next;
 }
 
 /** Set a person's name = group.label (creates a single-track group when needed). */
@@ -169,8 +180,16 @@ export function splitTrack(edits: Edits, trackId: string, frame: number): Edits 
   const a = `${trackId}a`;
   const b = `${trackId}b`;
   const wasVisible = edits.visible.includes(trackId);
+  // a single-member group is mapped to [a] only: the split-off piece b keeps the group's effect
+  const fx = effectsOf(edits);
+  const solo = edits.groups.find((g) => g.trackIds.length === 1 && g.trackIds[0] === trackId);
+  const effects =
+    solo && Object.prototype.hasOwnProperty.call(fx.overrides, solo.id)
+      ? { ...fx, overrides: { ...fx.overrides, [b]: fx.overrides[solo.id] } }
+      : edits.effects;
   return {
     ...edits,
+    ...(effects ? { effects } : {}),
     splits: [...edits.splits, { trackId, frame }],
     visible: wasVisible ? [...edits.visible.filter((v) => v !== trackId), a, b] : edits.visible,
     groups: edits.groups.map((g) =>

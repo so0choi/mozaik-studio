@@ -25,6 +25,7 @@ import { enlargeBox } from '../lib/geometry';
 import { emptyHistory, push as pushHistory, redo as redoHistory, undo as undoHistory, type History } from '../lib/history';
 import { normalizeEffects } from '../lib/effectParams';
 import { supportsCanvasFilter } from '../lib/effects';
+import { effectName } from '../studio/EffectControls';
 import { effectFor, maskRegions } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
@@ -66,6 +67,8 @@ function isTyping(t: EventTarget | null): boolean {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable;
 }
 
+const STALE_NOTICE = '렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.';
+
 export function Studio() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -103,6 +106,8 @@ export function Studio() {
   const saveRevision = useRef(0);
   const savedRevision = useRef(0);
   const saveChain = useRef<Promise<unknown>>(Promise.resolve());
+  // the edits revision the last render request was made for (the download is offered only for it)
+  const renderRevision = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
@@ -169,9 +174,10 @@ export function Studio() {
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
-      if (savedRevision.current !== saveRevision.current) void api.putEdits(id, editsRef.current).catch(() => undefined);
+      // the final save goes through the same serialized chain as every other save
+      if (savedRevision.current !== saveRevision.current) void flush();
     },
-    [id],
+    [id, flush],
   );
 
   const fail = useCallback(
@@ -192,7 +198,11 @@ export function Studio() {
         if (stop) return;
         setJob(j);
         if (j.state === 'rendering') setRenderPhase('rendering');
-        if (j.state === 'rendered' && j.hasOutput) setOutputReady(true);
+        // the server decides: hasOutput is true only while output.mp4 matches the saved edits
+        if (saveRevision.current === 0) {
+          if (j.state === 'rendered' && j.hasOutput) setOutputReady(true);
+          else if (j.outputStale && j.state !== 'rendering') setNotice(STALE_NOTICE);
+        }
         if (!EDITABLE.includes(j.state) && j.state !== 'failed') t = setTimeout(tick, 2000);
       } catch (e) {
         if (!stop) fail(e);
@@ -756,7 +766,9 @@ export function Studio() {
         setRenderError('저장하지 못해 렌더를 시작하지 않았습니다.');
         return;
       }
+      const rev = savedRevision.current; // flush() returned true: the API holds exactly this revision
       await api.render(id);
+      renderRevision.current = rev;
       setOutputReady(false);
       setRenderPhase('rendering');
     } catch (e) {
@@ -771,9 +783,14 @@ export function Studio() {
       try {
         const j = await api.getJob(id);
         setJob(j);
-        if (j.state === 'rendered' && j.hasOutput) {
+        if (j.state === 'rendered' && (j.hasOutput || j.outputStale)) {
           setRenderPhase('idle');
-          setOutputReady(true);
+          if (j.hasOutput && saveRevision.current === renderRevision.current) {
+            setOutputReady(true);
+          } else {
+            setOutputReady(false);
+            setNotice(STALE_NOTICE);
+          }
         } else if (j.state === 'failed' || (j.state === 'ready' && j.error)) {
           setRenderPhase('idle');
           setRenderError(j.error ?? '렌더에 실패했습니다.');
@@ -1058,7 +1075,9 @@ export function Studio() {
                   <span className="tchip">
                     적용 구간 {current.segments.length}구간 · 총 {formatDuration(current.appearSec)}
                   </span>
-                  <span className={`tchip fx${current.visible ? ' v' : ''}`}>{current.visible ? '원본' : '모자이크'}</span>
+                  <span className={`tchip fx${current.visible ? ' v' : ''}`}>
+                    {current.visible ? '원본' : effectName(effectOf(current).effect.type)}
+                  </span>
                 </>
               )}
             </div>

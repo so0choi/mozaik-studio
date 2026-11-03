@@ -20,5 +20,7 @@ export const shapeMaskCases = shapeMasksSample as unknown as {
   w: number;
   h: number;
   points: [number, number][] | null;
+  /** optional [x0, y0, x1, y1] in box coords; rows then describe only that window */
+  window?: [number, number, number, number];
   rows: string[];
 }[];

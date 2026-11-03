@@ -166,3 +166,29 @@ describe('groupPersons effects (used by masks)', () => {
     expect(r.every((x) => x.effect.type === 'blur')).toBe(true);
   });
 });
+
+describe('effect consistency across group and split (real edits output)', () => {
+  it('groupPersons leaves no member piece or track override that outranks the group', () => {
+    let e = withFx({ t1: E('color', 1, '#ff0000'), t2a: E('blur', 5), t2: E('blur', 3) });
+    e = splitTrack(e, 't2', 45);
+    const g = groupPersons(tracksDoc, e, ['t1', 't2a']);
+    const gid = g.groups[g.groups.length - 1].id;
+    // t1, t2a and the track key t2 are gone; the ungrouped sibling t2b keeps the track override it had
+    expect(Object.keys(g.effects!.overrides).sort()).toEqual([gid, 't2b'].sort());
+    expect(g.effects!.overrides.t2b).toEqual(E('blur', 3));
+    const m = maskRegions(tracksDoc, g, []);
+    expect(m.get(44)!.find((r) => r.id === 't2a')!.effect).toEqual(E('color', 1, '#ff0000'));
+    expect(m.get(44)!.find((r) => r.id === 't1')!.effect).toEqual(E('color', 1, '#ff0000'));
+    expect(m.get(46)!.find((r) => r.id === 't2b')!.effect).toEqual(E('blur', 3));
+  });
+
+  it('splitTrack keeps the group effect on the split-off piece of a single-member group', () => {
+    let e = withFx({ g1: E('blur', 4) }, { groups: [{ id: 'g1', trackIds: ['t2'] }] });
+    e = splitTrack(e, 't2', 45);
+    expect(e.groups[0].trackIds).toEqual(['t2a']);
+    expect(e.effects!.overrides.t2b).toEqual(E('blur', 4));
+    const m = maskRegions(tracksDoc, e, []);
+    expect(m.get(44)!.find((r) => r.id === 't2a')!.effect).toEqual(E('blur', 4));
+    expect(m.get(46)!.find((r) => r.id === 't2b')!.effect).toEqual(E('blur', 4));
+  });
+});

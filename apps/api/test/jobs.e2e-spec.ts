@@ -34,6 +34,7 @@ describe('jobs (A2)', () => {
       progress: 0,
       error: null,
       hasOutput: false,
+      outputStale: false,
     });
     expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(fs.existsSync(path.join(ctx.dataDir, 'jobs', res.body.id, 'original.mp4'))).toBe(true);
@@ -110,7 +111,7 @@ describe('jobs (A2)', () => {
     fs.rmSync(path.join(ctx.dataDir, 'jobs', id, 'status.json'));
     expect(await get()).toMatchObject({ state: 'queued', progress: 0, error: null });
 
-    seed(ctx, id, { 'output.mp4': Buffer.from('x') });
+    seed(ctx, id, { 'output.mp4': Buffer.from('x'), 'output.edits.json': { version: 1, visible: [], groups: [], splits: [], manual: [], reviewed: [], effects: { default: { type: 'mosaic', strength: 1 }, background: null, overrides: {} } } });
     expect((await get()).hasOutput).toBe(true);
   });
 

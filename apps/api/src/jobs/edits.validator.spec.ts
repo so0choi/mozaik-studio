@@ -1,4 +1,4 @@
-import { DEFAULT_EDITS, validateEdits } from './edits.validator';
+import { DEFAULT_EDITS, isValidBox, validateEdits } from './edits.validator';
 
 const tracks = new Set(['t1', 't2']);
 const none = new Set<string>();
@@ -58,5 +58,55 @@ describe('validateEdits manual shapes', () => {
     [{ shape: 'polygon', points: [[0, 0], [1, 0], [0, 'x']] }],
   ])('rejects %j', (x) => {
     expect(typeof run({ manual: [manual(x)] })).toBe('string');
+  });
+});
+
+describe('validateEdits bounds and reserved keys', () => {
+  const MAX = 16384;
+  const BAD = '편집 내용 형식이 올바르지 않습니다.';
+  const withBox = (box: number[]) => ({ ...DEFAULT_EDITS(), manual: [manual({ anchors: [{ frame: 0, box }] })] });
+  const run = (e: any) => validateEdits(e, new Set(), new Set());
+
+  it('box bounds: 16384 ok, 16385 rejected', () => {
+    expect(run(withBox([MAX, -MAX, MAX, MAX]))).toBeNull();
+    expect(run(withBox([MAX + 1, 0, 10, 10]))).toBe(BAD);
+    expect(run(withBox([0, -MAX - 1, 10, 10]))).toBe(BAD);
+    expect(run(withBox([0, 0, MAX + 1, 10]))).toBe(BAD);
+    expect(run(withBox([0, 0, 10, MAX + 1]))).toBe(BAD);
+    expect(run(withBox([0, 0, 0, 10]))).toBe(BAD);
+  });
+
+  it('isValidBox applies the same bounds', () => {
+    expect(isValidBox([MAX, MAX, MAX, MAX])).toBe(true);
+    expect(isValidBox([MAX + 1, 0, 10, 10])).toBe(false);
+    expect(isValidBox([0, 0, MAX + 1, 10])).toBe(false);
+  });
+
+  it('at most 500 anchors per manual entry', () => {
+    const mk = (n: number) => ({ ...DEFAULT_EDITS(), manual: [manual({ anchors: Array.from({ length: n }, (_, i) => ({ frame: i, box: [0, 0, 10, 10] })) })] });
+    expect(run(mk(500))).toBeNull();
+    expect(run(mk(501))).toBe(BAD);
+  });
+
+  const poly = (points: number[][]) => ({ ...DEFAULT_EDITS(), manual: [manual({ shape: 'polygon', points })] });
+  it('polygon points: 256 ok, 257 rejected', () => {
+    const ring = (n: number) => Array.from({ length: n }, (_, i) => [0.5 + 0.4 * Math.cos((2 * Math.PI * i) / n), 0.5 + 0.4 * Math.sin((2 * Math.PI * i) / n)]);
+    expect(run(poly(ring(256)))).toBeNull();
+    expect(run(poly(ring(257)))).toBe(BAD);
+  });
+
+  it('rejects zero-area polygons (collinear, identical)', () => {
+    expect(run(poly([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]]))).toBe(BAD);
+    expect(run(poly([[0.5, 0.5], [0.5, 0.5], [0.5, 0.5]]))).toBe(BAD);
+    expect(run(poly([[0.1, 0.1], [0.5, 0.1], [0.5, 0.5]]))).toBeNull();
+  });
+
+  it('rejects reserved group ids and override keys (JSON.parse input)', () => {
+    for (const k of ['__proto__', 'constructor', 'prototype']) {
+      const g = JSON.parse(`{"version":1,"visible":[],"reviewed":[],"splits":[],"manual":[],"groups":[{"id":"${k}","trackIds":[],"label":""}]}`);
+      expect(run(g)).toBe(BAD);
+      const o = JSON.parse(`{"version":1,"visible":[],"reviewed":[],"splits":[],"manual":[],"groups":[],"effects":{"default":{"type":"mosaic"},"overrides":{"${k}":{"type":"blur"}}}}`);
+      expect(run(o)).toBe(BAD);
+    }
   });
 });

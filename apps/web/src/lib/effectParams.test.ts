@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { backgroundBlock, backgroundSigma, regionBlock, regionSigma } from './effectParams';
+import { effectFor } from './masks';
+import { normalizeEffects, backgroundBlock, backgroundSigma, regionBlock, regionSigma } from './effectParams';
 import { effectParamCases } from './fixtures';
 
 const fns: Record<string, (...a: number[]) => number> = {
@@ -18,4 +19,34 @@ describe('effect params (shared fixture with worker effects)', () => {
       expect(fn(...c.args)).toBeCloseTo(c.expected, 9);
     });
   }
+});
+
+describe('normalizeEffects prototype safety', () => {
+  const evil = JSON.parse(
+    '{"effects":{"default":{},"overrides":{"__proto__":{"type":"blur"},"constructor":{"type":"blur"},"prototype":{"type":"blur"},"t1":{"type":"color"}}}}',
+  );
+
+  it('skips reserved keys and never touches the prototype', () => {
+    const n = normalizeEffects(evil);
+    expect(Object.keys(n.overrides)).toEqual(['t1']);
+    expect(Object.getPrototypeOf(n.overrides)).not.toEqual(expect.objectContaining({ type: 'blur' }));
+    expect(({} as Record<string, unknown>).type).toBeUndefined();
+    expect((n.overrides as Record<string, unknown>).type).toBeUndefined();
+  });
+
+  it('effectFor ignores reserved ids and still reads own overrides', () => {
+    const edits = { ...evil, groups: [], visible: [] } as never;
+    expect(effectFor('constructor', 'constructor', edits).type).toBe('mosaic');
+    expect(effectFor('t1', 't1', edits).type).toBe('color');
+  });
+
+  it('background is an effect only for a plain non-empty object', () => {
+    const bg = (b: unknown) => normalizeEffects({ effects: { background: b } } as never).background;
+    expect(bg({})).toBeNull();
+    expect(bg([1])).toBeNull();
+    expect(bg('blur')).toBeNull();
+    expect(bg(1)).toBeNull();
+    expect(bg(null)).toBeNull();
+    expect(bg({ type: 'blur' })?.type).toBe('blur');
+  });
 });

@@ -21,8 +21,9 @@ export const MIN_THUMB_BLOCK = 4;
 
 /**
  * Scale source-pixel regions into thumbnail pixels. The box grows outward to whole pixels (never
- * smaller than the scaled box), polygon points scale and round, and the block size scales too
- * (min MIN_THUMB_BLOCK px). The effect and shape are kept.
+ * smaller than the scaled box) and the block size scales too (min MIN_THUMB_BLOCK px). The effect is
+ * kept. An ellipse or polygon is drawn as its (outward-rounded) bounding rect (shape 'rect', no
+ * points): a tiny thumbnail must never under-cover a face.
  */
 export function scaleRegions(regions: Region[], srcW: number, srcH: number, thumbW: number, thumbH: number): Region[] {
   const sx = thumbW / srcW;
@@ -35,7 +36,8 @@ export function scaleRegions(regions: Region[], srcW: number, srcH: number, thum
     return {
       ...r,
       box: [x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)],
-      points: r.points ? r.points.map(([px, py]): [number, number] => [Math.round(px * sx), Math.round(py * sy)]) : null,
+      shape: 'rect',
+      points: null,
       block: Math.max(MIN_THUMB_BLOCK, Math.round(r.block * Math.min(sx, sy))),
     };
   });

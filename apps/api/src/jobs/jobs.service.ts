@@ -17,7 +17,10 @@ export interface Job {
   state: string;
   progress: number;
   error: string | null;
+  /** output.mp4 exists AND was rendered from the current saved edits. */
   hasOutput: boolean;
+  /** output.mp4 exists but does not match the current saved edits (or its binding is missing). */
+  outputStale: boolean;
 }
 
 interface Status {
@@ -25,6 +28,16 @@ interface Status {
   progress: number;
   error: string | null;
   updatedAt: string | null;
+}
+
+/** Key-order independent serialisation, so edits compare by value, not by byte layout. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v) ?? 'null';
 }
 
 const RENDER_REQUEST_TTL_S = 6 * 60 * 60;
@@ -91,8 +104,26 @@ export class JobsService {
       state: pending ? 'rendering' : s.state,
       progress: pending ? 0 : s.progress,
       error: pending ? null : s.error,
-      hasOutput: !pending && this.storage.exists(this.storage.file(row.id, 'output.mp4')),
+      ...(pending ? { hasOutput: false, outputStale: false } : this.outputState(row.id)),
     };
+  }
+
+  /**
+   * output.mp4 is only valid for the edits the worker rendered it from (output.edits.json, written
+   * next to it). A missing or differing binding means stale: it is never offered for download.
+   */
+  outputState(id: string): { hasOutput: boolean; outputStale: boolean } {
+    if (!this.storage.exists(this.storage.file(id, 'output.mp4'))) return { hasOutput: false, outputStale: false };
+    const bound = this.storage.readJson(this.storage.file(id, 'output.edits.json'));
+    const fresh = bound !== undefined && canonical(bound) === canonical(this.getEdits(id));
+    return { hasOutput: fresh, outputStale: !fresh };
+  }
+
+  /** Path of a downloadable output: 404 while none exists, 409 when it predates the saved edits. */
+  outputPath(id: string): string {
+    const st = this.outputState(id);
+    if (st.outputStale) throw new ConflictException('렌더 후 편집이 바뀌었습니다. 다시 렌더하세요.');
+    return this.videoPath(id, 'output.mp4');
   }
 
   async list(owner: string): Promise<Job[]> {

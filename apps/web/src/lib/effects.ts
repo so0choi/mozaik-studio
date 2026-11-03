@@ -13,6 +13,8 @@ export interface PixelSource {
 }
 
 const GREY = '#6b6f7a';
+/** A frame-visible window above this many pixels is not drawn for the preview (grey fallback). */
+const MAX_WINDOW_PIXELS = 8192 * 8192;
 
 let filterSupport: boolean | null = null;
 
@@ -23,7 +25,7 @@ let filterSupport: boolean | null = null;
  * see a neighbouring pixel become non-transparent. Any failure means false (blur is then skipped,
  * and the opaque mosaic underlay stays: the raw frame is never drawn for blur). Cached.
  */
-export function supportsCanvasFilter(_ctx?: CanvasRenderingContext2D): boolean {
+export function supportsCanvasFilter(): boolean {
   if (filterSupport === null) {
     try {
       if (typeof CanvasRenderingContext2D === 'undefined' || !('filter' in CanvasRenderingContext2D.prototype)) {
@@ -64,38 +66,6 @@ export function maskAlpha(bitmap: Uint8Array): Uint8ClampedArray {
   return data;
 }
 
-/** Source pixels covered by one display pixel, rounded up (>= 1). */
-export function previewDilation(srcW: number, displayW: number): number {
-  return Math.max(1, Math.ceil(srcW / Math.max(1, displayW)));
-}
-
-/**
- * Preview-only: square dilation of a 0/1 w*h bitmap by d - 1 pixels (d = 1 is the identity), kept
- * inside the box. Nearest-neighbour downscaling can drop edge pixels the render masks; growing the
- * preview mask guarantees it never masks less than the render.
- */
-export function dilateBitmap(bitmap: Uint8Array, w: number, h: number, d: number): Uint8Array {
-  const n = Math.max(0, Math.floor(d) - 1);
-  if (n === 0) return bitmap;
-  const tmp = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let v = 0;
-      for (let k = Math.max(0, x - n); k <= Math.min(w - 1, x + n) && !v; k++) v = bitmap[y * w + k] ? 1 : 0;
-      tmp[y * w + x] = v;
-    }
-  }
-  const out = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let v = 0;
-      for (let k = Math.max(0, y - n); k <= Math.min(h - 1, y + n) && !v; k++) v = tmp[k * w + x];
-      out[y * w + x] = v;
-    }
-  }
-  return out;
-}
-
 const maskCanvases = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 function maskCanvasFor(off: HTMLCanvasElement): HTMLCanvasElement {
   let m = maskCanvases.get(off);
@@ -107,30 +77,36 @@ function maskCanvasFor(off: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 /**
- * Downscale `box` (source pixels, grid origin = its top-left, block in source pixels) of the frame
- * into the top-left cols x rows cells of `off`. The caller enlarges them with smoothing off.
+ * Downscale the cols x rows grid cells (block source pixels each) whose top-left cell starts at
+ * source pixel (sx, sy) into the top-left cols x rows pixels of `off`. The caller enlarges them with
+ * smoothing off.
  */
 function mosaicInto(
   octx: CanvasRenderingContext2D,
   src: PixelSource,
-  box: readonly [number, number, number, number],
+  sx: number,
+  sy: number,
   block: number,
   vx: number,
   vy: number,
   grid: { cols: number; rows: number },
 ): void {
-  const [x, y] = box;
   const { cols, rows } = grid;
   // Opaque base: a cell the source rect cannot fully cover (box at the frame edge) is never transparent.
   octx.fillStyle = GREY;
   octx.fillRect(0, 0, cols, rows);
   octx.imageSmoothingEnabled = true;
-  octx.drawImage(src.image, x * vx, y * vy, cols * block * vx, rows * block * vy, 0, 0, cols, rows);
+  octx.drawImage(src.image, sx * vx, sy * vy, cols * block * vx, rows * block * vy, 0, 0, cols, rows);
 }
 
 /** Display box of a region rounded OUTWARD to whole pixels: no partially transparent outer pixel. */
-function outward(r: Region, rect: Rect, srcW: number, srcH: number): [number, number, number, number] {
-  const [dx, dy, dw, dh] = toDisplay(r.box, srcW, srcH, rect.w, rect.h);
+function outward(
+  box: readonly [number, number, number, number],
+  rect: Rect,
+  srcW: number,
+  srcH: number,
+): [number, number, number, number] {
+  const [dx, dy, dw, dh] = toDisplay([box[0], box[1], box[2], box[3]], srcW, srcH, rect.w, rect.h);
   const x0 = Math.floor(rect.x + dx);
   const y0 = Math.floor(rect.y + dy);
   return [x0, y0, Math.ceil(rect.x + dx + dw) - x0, Math.ceil(rect.y + dy + dh) - y0];
@@ -176,10 +152,10 @@ function drawBackground(
     const g = gridOf(srcW, srcH, backgroundBlock(srcW, srcH, eff.strength));
     off.width = g.cols;
     off.height = g.rows;
-    mosaicInto(octx, src, [0, 0, srcW, srcH], g.block, vx, vy, g);
+    mosaicInto(octx, src, 0, 0, g.block, vx, vy, g);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(off, 0, 0, g.cols, g.rows, wr.x, wr.y, wr.w, wr.h);
-    if (eff.type === 'blur' && supportsCanvasFilter(octx)) {
+    if (eff.type === 'blur' && supportsCanvasFilter()) {
       const qw = Math.max(1, Math.ceil(srcW / 4));
       const qh = Math.max(1, Math.ceil(srcH / 4));
       off.width = qw;
@@ -212,47 +188,68 @@ function drawRegion(
 ): void {
   const [x, y, w, h] = r.box;
   if (w <= 0 || h <= 0) return;
+  // only the frame-visible part of the box is ever drawn: canvases are sized from this window, never
+  // from the (possibly huge or far off-frame) box
+  const wx0 = Math.max(0, x);
+  const wy0 = Math.max(0, y);
+  const wx1 = Math.min(srcW, x + w);
+  const wy1 = Math.min(srcH, y + h);
+  const ww = wx1 - wx0;
+  const wh = wy1 - wy0;
+  if (!(ww > 0) || !(wh > 0)) throw new Error('region outside the frame');
+  if (ww * wh > MAX_WINDOW_PIXELS) throw new Error('region window too large');
+  const ox0 = wx0 - x; // window origin inside the box
+  const oy0 = wy0 - y;
   const vx = src.width / srcW;
   const vy = src.height / srcH;
   const eff = r.effect;
 
-  // (1) opaque mosaic underlay with the region's own block
-  const g = gridOf(w, h, r.block);
-  off.width = Math.max(w, g.cols);
-  off.height = Math.max(h, g.rows);
-  mosaicInto(octx, src, r.box, g.block, vx, vy, g);
+  off.width = ww;
+  off.height = wh;
+  if (off.width !== ww || off.height !== wh) throw new Error('canvas allocation failed');
+
+  // (1) opaque mosaic underlay with the region's own block; the grid origin is the BOX top-left
+  const b = Math.max(1, r.block);
+  const c0 = Math.floor(ox0 / b);
+  const r0 = Math.floor(oy0 / b);
+  const g = {
+    cols: Math.max(1, Math.ceil((ox0 + ww) / b) - c0),
+    rows: Math.max(1, Math.ceil((oy0 + wh) / b) - r0),
+  };
+  mosaicInto(octx, src, x + c0 * b, y + r0 * b, b, vx, vy, g);
   octx.imageSmoothingEnabled = false;
-  octx.drawImage(off, 0, 0, g.cols, g.rows, 0, 0, g.cols * g.block, g.rows * g.block);
+  octx.drawImage(off, 0, 0, g.cols, g.rows, c0 * b - ox0, r0 * b - oy0, g.cols * b, g.rows * b);
 
   // (2) effect over it
   if (eff.type === 'blur') {
-    if (supportsCanvasFilter(octx)) {
+    if (supportsCanvasFilter()) {
       const sigma = regionSigma(w, h, eff.strength);
       const m = Math.ceil(3 * sigma);
-      const x0 = Math.max(0, x - m);
-      const y0 = Math.max(0, y - m);
-      const x1 = Math.min(srcW, x + w + m);
-      const y1 = Math.min(srcH, y + h + m);
+      const bx0 = Math.max(0, wx0 - m);
+      const by0 = Math.max(0, wy0 - m);
+      const bx1 = Math.min(srcW, wx1 + m);
+      const by1 = Math.min(srcH, wy1 + m);
       octx.filter = `blur(${sigma}px)`;
-      // the box lands at (0, 0); the margin falls off the canvas but is seen by the blur
-      octx.drawImage(src.image, x0 * vx, y0 * vy, (x1 - x0) * vx, (y1 - y0) * vy, x0 - x, y0 - y, x1 - x0, y1 - y0);
+      // the window lands at (0, 0); the margin falls off the canvas but is seen by the blur
+      octx.drawImage(src.image, bx0 * vx, by0 * vy, (bx1 - bx0) * vx, (by1 - by0) * vy, bx0 - wx0, by0 - wy0, bx1 - bx0, by1 - by0);
       octx.filter = 'none';
     }
   } else if (eff.type === 'color') {
     octx.fillStyle = eff.color;
-    octx.fillRect(0, 0, w, h);
+    octx.fillRect(0, 0, ww, wh);
   }
 
-  // (3) shape alpha, strictly 0 / 255
+  // (3) shape alpha, strictly 0 / 255 (the same window bitmap as the render)
   if (r.shape !== 'rect') {
     const pts = r.points ? r.points.map(([px, py]): [number, number] => [px - x, py - y]) : null;
-    const bm = dilateBitmap(shapeBitmap(r.shape, w, h, pts), w, h, previewDilation(srcW, rect.w));
+    const bm = shapeBitmap(r.shape, w, h, pts, [ox0, oy0, ox0 + ww, oy0 + wh]);
     const mask = maskCanvasFor(off);
-    mask.width = w;
-    mask.height = h;
+    mask.width = ww;
+    mask.height = wh;
+    if (mask.width !== ww || mask.height !== wh) throw new Error('canvas allocation failed');
     const mctx = mask.getContext('2d');
     if (!mctx) throw new Error('no mask canvas');
-    const img = mctx.createImageData(w, h);
+    const img = mctx.createImageData(ww, wh);
     img.data.set(maskAlpha(bm));
     mctx.putImageData(img, 0, 0);
     octx.globalCompositeOperation = 'destination-in';
@@ -261,7 +258,7 @@ function drawRegion(
   }
 
   // (4) to the display, nearest neighbour, never outside the content rect
-  const [ox, oy, ow, oh] = outward(r, rect, srcW, srcH);
+  const [dxo, dyo, dwo, dho] = outward([wx0, wy0, ww, wh], rect, srcW, srcH);
   ctx.save();
   try {
     const wr = outwardRect(rect);
@@ -269,7 +266,7 @@ function drawRegion(
     ctx.rect(wr.x, wr.y, wr.w, wr.h);
     ctx.clip();
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(off, 0, 0, w, h, ox, oy, ow, oh);
+    ctx.drawImage(off, 0, 0, ww, wh, dxo, dyo, dwo, dho);
   } finally {
     ctx.restore();
   }
@@ -291,9 +288,18 @@ export function drawFrameEffects(
   srcH: number,
 ): void {
   const grey = (r: Region) => {
-    const [ox, oy, ow, oh] = outward(r, rect, srcW, srcH);
-    ctx.fillStyle = GREY;
-    ctx.fillRect(ox, oy, ow, oh);
+    const [ox, oy, ow, oh] = outward(r.box, rect, srcW, srcH);
+    const wr = outwardRect(rect);
+    ctx.save();
+    try {
+      ctx.beginPath(); // an off-frame region must never paint into the letterbox
+      ctx.rect(wr.x, wr.y, wr.w, wr.h);
+      ctx.clip();
+      ctx.fillStyle = GREY;
+      ctx.fillRect(ox, oy, ow, oh);
+    } finally {
+      ctx.restore();
+    }
   };
   const octx = off.getContext('2d');
   if (!octx || !src.ready || !src.width || !src.height) {

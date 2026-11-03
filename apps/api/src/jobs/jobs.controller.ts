@@ -87,7 +87,7 @@ export class JobsController {
   async output(@Req() req: any, @Res() res: any, @Param('id') id: string) {
     const row = this.jobs.getOwned(id, req.user.username);
     if (await this.jobs.renderPending(id)) throw new NotFoundException('렌더가 끝나지 않았습니다.');
-    res.download(this.jobs.videoPath(id, 'output.mp4'), this.jobs.outputName(row));
+    res.download(this.jobs.outputPath(id), this.jobs.outputName(row));
   }
 
   @Post(':id/manual')
