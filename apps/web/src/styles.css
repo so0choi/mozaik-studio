@@ -431,3 +431,7 @@ h2.sect{font-size:15px;font-weight:800;padding:var(--s2) 2px 0}
 .myjobs{position:relative}
 .myjobs-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:50;width:min(440px,90vw);max-height:60vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:var(--s3);box-shadow:0 8px 24px #0002}
 @media (max-width:900px){.up-zone{flex-wrap:wrap}.up-title strong{font-size:22px}}
+.maskpicker{position:absolute;cursor:pointer}
+.maskpicker .mp-outline{position:absolute;border:2px solid var(--overlay-line);border-radius:4px;pointer-events:none;box-sizing:border-box}
+.maskpicker .mp-x{position:absolute;width:22px;height:22px;border-radius:50%;background:#fff;color:#1F2330;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4);padding:0;cursor:pointer}
+.mp-status{font-size:13px;color:var(--ink,#1F2330);background:var(--primary-soft);padding:var(--s2) var(--s3);text-align:center}

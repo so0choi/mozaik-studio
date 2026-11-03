@@ -18,6 +18,7 @@ import {
   setPersonVisible,
   setTargetEffect,
   uncoverPerson,
+  unmaskPiece,
   splitTrack,
 } from '../lib/edits';
 import { enlargeBox } from '../lib/geometry';
@@ -30,6 +31,7 @@ import { pieces } from '../lib/pieces';
 import { formatDuration } from '../lib/frames';
 import type { Box, Edits, Effect, Job, ManualDoc, ManualState, ReviewItem, Shape, TracksDoc } from '../lib/types';
 import { BoxTool } from '../studio/BoxTool';
+import { MaskPicker } from '../studio/MaskPicker';
 import { ManualBoxCard, manualRange } from '../studio/ManualBoxCard';
 import { LeftPanel } from '../studio/LeftPanel';
 import { PlayerControls } from '../studio/PlayerControls';
@@ -86,6 +88,9 @@ export function Studio() {
   const [manualOpen, setManualOpen] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [unmaskMsg, setUnmaskMsg] = useState('');
+  const unmaskTimer = useRef<ReturnType<typeof setTimeout>>();
   const [renderPhase, setRenderPhase] = useState<'idle' | 'rendering'>('idle');
   const [savingForRender, setSavingForRender] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -350,6 +355,24 @@ export function Studio() {
     if (v.paused) void v.play()?.catch?.(() => undefined);
     else v.pause();
   };
+  const pickRegion = (rid: string | null) => {
+    setPickedId(rid);
+    if (!rid) return;
+    const v = videoRef.current;
+    if (v && !v.paused) v.pause();
+    const person = peopleList.find((p) => p.trackIds.includes(rid));
+    if (person) setCurrentKey(person.key);
+  };
+  const unmaskRegion = (rid: string) => {
+    if (pieceById.has(rid)) updateEdits((e) => unmaskPiece(tracks!, e, rid));
+    else if (editsRef.current.manual.some((m) => m.id === rid)) updateEdits((e) => deleteManual(e, rid));
+    else return;
+    setPickedId(null);
+    setUnmaskMsg('가림을 해제했습니다 · Ctrl+Z로 되돌리기');
+    clearTimeout(unmaskTimer.current);
+    unmaskTimer.current = setTimeout(() => setUnmaskMsg(''), 4000);
+  };
+  useEffect(() => () => clearTimeout(unmaskTimer.current), []);
   const stepFrame = (delta: number) => {
     pause();
     seek(frame + delta);
@@ -819,7 +842,8 @@ export function Studio() {
         chooseOption(Number(e.key));
         break;
       case 'Escape':
-        if (manualOpenEdit) setManualOpen(null);
+        if (pickedId) setPickedId(null);
+        else if (manualOpenEdit) setManualOpen(null);
         else if (activeItem && stage !== 'ask') setStage('ask');
         else return;
         break;
@@ -1092,7 +1116,17 @@ export function Studio() {
             onFrame={setFrame}
           >
             {(rect) =>
-              boxMode && (
+              !boxMode ? (
+                <MaskPicker
+                  rect={rect}
+                  srcW={tracks.width}
+                  srcH={tracks.height}
+                  regions={regions.get(frame)}
+                  selectedId={pickedId}
+                  onSelect={pickRegion}
+                  onUnmask={unmaskRegion}
+                />
+              ) : (
                 <BoxTool
                   key={`${boxMode.shape}:${boxMode.manualId ?? ''}`}
                   rect={rect}
@@ -1107,6 +1141,11 @@ export function Studio() {
               )
             }
           </PlayerOverlay>
+          {unmaskMsg && (
+            <div className="mp-status" role="status">
+              {unmaskMsg}
+            </div>
+          )}
           <PlayerControls
             videoRef={videoRef}
             fps={fps}

@@ -1045,3 +1045,34 @@ describe('Studio save-gated render', () => {
     expect(await screen.findByRole('button', { name: /괜찮음/ })).toBeInTheDocument();
   });
 });
+
+describe('Studio mask picker', () => {
+  it('X on a picked ungrouped piece unmasks it in one undo step and undo restores it', async () => {
+    setup();
+    await card('t1');
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const orig = [Object.getOwnPropertyDescriptor(proto, 'clientWidth'), Object.getOwnPropertyDescriptor(proto, 'clientHeight')];
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 640 });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 360 });
+    try {
+      fireEvent(window, new Event('resize'));
+      const layer = await screen.findByTestId('maskpicker');
+      layer.getBoundingClientRect = () => ({ left: 0, top: 0, right: 640, bottom: 360, width: 640, height: 360, x: 0, y: 0, toJSON: () => ({}) });
+      fireEvent.click(layer, { clientX: 120, clientY: 120 });
+      expect(await screen.findByTestId('unmask-x')).toBeInTheDocument();
+      const sw = () => within(screen.getByTestId('card-t1')).getByRole('switch', { name: '인물 1 보임 전환' });
+      expect(sw()).toHaveAttribute('aria-checked', 'false');
+      await userEvent.click(screen.getByTestId('unmask-x'));
+      expect(sw()).toHaveAttribute('aria-checked', 'true');
+      expect(screen.queryByTestId('unmask-x')).toBeNull();
+      expect(screen.getByText('가림을 해제했습니다 · Ctrl+Z로 되돌리기')).toBeInTheDocument();
+      await userEvent.keyboard('{Control>}z{/Control}');
+      expect(sw()).toHaveAttribute('aria-checked', 'false');
+    } finally {
+      if (orig[0]) Object.defineProperty(proto, 'clientWidth', orig[0]);
+      else delete proto.clientWidth;
+      if (orig[1]) Object.defineProperty(proto, 'clientHeight', orig[1]);
+      else delete proto.clientHeight;
+    }
+  });
+});

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addManualAnchor, addManualEdit, deleteManual, emptyEdits, groupPersons, normalizeEdits,
-  setBackgroundEffect, setDefaultEffect, setManualTrim, setPersonEffect, setTargetEffect, uncoverPerson,
+  setBackgroundEffect, setDefaultEffect, setManualTrim, setPersonEffect, setTargetEffect, uncoverPerson, unmaskPiece,
 } from './edits';
 import { tracksDoc } from './fixtures';
 import { enlargeBox } from './geometry';
@@ -155,5 +155,41 @@ describe('setPersonEffect / uncoverPerson', () => {
     const once = uncoverPerson(tracksDoc, e, person('t1', ['t1']));
     expect(once.visible).toEqual(['t1']);
     expect(uncoverPerson(tracksDoc, once, person('t1', ['t1']))).toBe(once);
+  });
+});
+
+describe('unmaskPiece', () => {
+  const split = (e: Edits): Edits => ({ ...e, splits: [{ trackId: 't2', frame: 45 }] });
+
+  it('ungrouped piece becomes visible and nothing else changes', () => {
+    const e = unmaskPiece(tracksDoc, emptyEdits(), 't1');
+    expect(e.visible).toEqual(['t1']);
+  });
+  it('grouped piece leaves the group; the group stays masked with its id and label', () => {
+    const e0: Edits = { ...emptyEdits(), groups: [{ id: 'g1', trackIds: ['t1', 't2'], label: '가족' }] };
+    const e = unmaskPiece(tracksDoc, e0, 't1');
+    expect(e.groups).toEqual([{ id: 'g1', trackIds: ['t2'], label: '가족' }]);
+    expect(e.visible).toEqual(['t1']);
+  });
+  it('a one-member group is dropped', () => {
+    const e0: Edits = { ...emptyEdits(), groups: [{ id: 'g1', trackIds: ['t1'] }] };
+    const e = unmaskPiece(tracksDoc, e0, 't1');
+    expect(e.groups).toEqual([]);
+    expect(e.visible).toEqual(['t1']);
+  });
+  it('split base id in a group is replaced by the sibling piece', () => {
+    const e0 = split({ ...emptyEdits(), groups: [{ id: 'g1', trackIds: ['t1', 't2'] }] });
+    const e = unmaskPiece(tracksDoc, e0, 't2a');
+    expect(e.groups[0].trackIds).toEqual(['t1', 't2b']);
+    expect(e.visible).toEqual(['t2a']);
+  });
+  it('a visible group id is expanded so the other members stay visible', () => {
+    const e0: Edits = { ...emptyEdits(), visible: ['g1'], groups: [{ id: 'g1', trackIds: ['t1', 't2'] }] };
+    const e = unmaskPiece(tracksDoc, e0, 't1');
+    expect(e.visible.sort()).toEqual(['t1', 't2']);
+  });
+  it('unknown piece returns the same object', () => {
+    const e = emptyEdits();
+    expect(unmaskPiece(tracksDoc, e, 'zz')).toBe(e);
   });
 });

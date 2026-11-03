@@ -1,6 +1,6 @@
 import { normalizeEffects } from './effectParams';
 import { people } from './people';
-import { splitFrames } from './pieces';
+import { pieces, splitFrames, visibleIds } from './pieces';
 import type { Box, Edits, Effect, ManualEdit, Person, TracksDoc } from './types';
 
 export function emptyEdits(): Edits {
@@ -65,6 +65,41 @@ export function setPersonEffect(_doc: TracksDoc, edits: Edits, person: Person, e
 export function uncoverPerson(_doc: TracksDoc, edits: Edits, person: Person): Edits {
   if (person.trackIds.every((id) => edits.visible.includes(id))) return edits;
   return setPersonVisible(edits, person, true);
+}
+
+/**
+ * Unmask ONE piece (explicit user action). It leaves its group (a base id `tN` in the group is
+ * replaced by the sibling pieces) and becomes visible; every other member keeps its visibility.
+ */
+export function unmaskPiece(doc: TracksDoc, edits: Edits, pieceId: string): Edits {
+  const all = pieces(doc, edits);
+  const piece = all.find((p) => p.id === pieceId);
+  if (!piece) return edits;
+  const group = edits.groups.find((g) => g.trackIds.includes(pieceId) || g.trackIds.includes(piece.trackId));
+  if (!group) {
+    if (visibleIds(edits).has(pieceId)) return edits;
+    const person = people(doc, edits).find((p) => p.trackIds.includes(pieceId));
+    return person ? setPersonVisible(edits, person, true) : edits;
+  }
+  const siblings = all.filter((p) => p.trackId === piece.trackId && p.id !== pieceId).map((p) => p.id);
+  const members = group.trackIds
+    .flatMap((id) => (id === pieceId ? [] : id === piece.trackId ? siblings : [id]))
+    .filter((id, i, a) => a.indexOf(id) === i);
+  // a visible group id stands for all its members: keep the others visible explicitly
+  const groupShown = edits.visible.includes(group.id);
+  let visible = edits.visible.filter((v) => v !== group.id);
+  if (groupShown) visible = [...visible, ...members];
+  if (!visible.includes(pieceId)) visible = [...visible, pieceId];
+  let next: Edits = { ...edits, visible: [...new Set(visible)] };
+  if (members.length < 1) {
+    const fx = effectsOf(edits);
+    const overrides = { ...fx.overrides };
+    delete overrides[group.id];
+    next = { ...next, groups: edits.groups.filter((g) => g.id !== group.id), effects: { ...fx, overrides } };
+  } else {
+    next = { ...next, groups: edits.groups.map((g) => (g.id === group.id ? { ...g, trackIds: members } : g)) };
+  }
+  return next;
 }
 
 function nextGroupId(edits: Edits): string {
