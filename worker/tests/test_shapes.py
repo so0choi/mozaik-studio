@@ -100,3 +100,91 @@ def test_shape_mask_does_not_allocate_full_box(monkeypatch):
     r2 = shape_mask({"box": [-10**6, -10**6, 2 * 10**6, 2 * 10**6], "shape": "rect", "points": None}, 50, 40)
     assert r2[2].shape == (40, 50) and r2[2].all()
     assert seen and all(w is not None for w in seen)
+
+
+# ---- soft ellipse (blur on ellipse regions) ----
+from mosaic_worker.compose import mask_regions  # noqa: E402
+from mosaic_worker.effects import apply_region, normalize_effect  # noqa: E402
+from mosaic_worker.shapes import SOFT_EDGE, face_ellipse_box, soft_ellipse_alpha, soft_extent  # noqa: E402
+
+
+def test_soft_alpha_fixture_parity():
+    doc = json.loads((FIXTURES / "soft-ellipse-alpha.json").read_text())
+    assert len(doc["cases"]) >= 2
+    for c in doc["cases"]:
+        x, y, w, h = c["box"]
+        for px, py, want in c["samples"]:
+            a = soft_ellipse_alpha(w, h, (px - x, py - y, px - x + 1, py - y + 1))[0, 0]
+            assert int(a * 255 + 0.5) == want, (c["name"], px, py)
+
+
+def test_face_ellipse_geometry_from_stored_box():
+    # stored (100, 50, 80, 60): c=(140, 80), a=46, b=34.5
+    assert face_ellipse_box([100, 50, 80, 60]) == [94, 45, 93, 70]
+
+
+def test_soft_core_equals_hard_ellipse_and_band_is_strict():
+    w, h = 41, 31
+    x0, y0, x1, y1 = soft_extent(w, h)
+    a = soft_ellipse_alpha(w, h, (x0, y0, x1, y1))
+    hard = shape_bitmap("ellipse", w, h, None)
+    assert (a[-y0 : -y0 + h, -x0 : -x0 + w][hard] == 1.0).all()
+    assert ((a > 0) & (a < 1)).any()
+    # outside the enlarged extent's ellipse (r >= 1 + SOFT_EDGE) alpha is exactly 0
+    rx, ry = w / 2, h / 2
+    xs = np.arange(x0, x1)[None, :] + 0.5
+    ys = np.arange(y0, y1)[:, None] + 0.5
+    r = np.sqrt(((xs - rx) / rx) ** 2 + ((ys - ry) / ry) ** 2)
+    assert (a[r >= 1 + SOFT_EDGE] == 0).all()
+    assert (a[(r > 1) & (r < 1 + SOFT_EDGE)] < 1).all()
+
+
+def test_safety_raw_box_fully_blurred():
+    rng = np.random.default_rng(7)
+    frame = rng.integers(0, 256, (400, 500, 3), dtype=np.uint8)
+    for _ in range(40):
+        w, h = int(rng.integers(8, 150)), int(rng.integers(8, 150))
+        x, y = int(rng.integers(0, 500 - w)), int(rng.integers(0, 400 - h))
+        # stored box = raw grown 25%; raw box = stored / 1.25, same centre
+        rw, rh = w / 1.25, h / 1.25
+        rx0, ry0 = x + (w - rw) / 2, y + (h - rh) / 2
+        ex, ey, ew, eh = face_ellipse_box([x, y, w, h])
+        x0, y0, x1, y1 = soft_extent(ew, eh)
+        a = soft_ellipse_alpha(ew, eh, (x0, y0, x1, y1))
+        for py in range(int(np.ceil(ry0)), int(np.floor(ry0 + rh))):
+            for px in (int(np.ceil(rx0)), int(np.floor(rx0 + rw)) - 1):
+                assert a[py - ey - y0, px - ex - x0] == 1.0, (x, y, w, h, px, py)
+        # all four raw corners (the worst case for an ellipse)
+        for px, py in ((np.ceil(rx0), np.ceil(ry0)), (np.floor(rx0 + rw) - 1, np.floor(ry0 + rh) - 1)):
+            assert a[int(py) - ey - y0, int(px) - ex - x0] == 1.0
+
+
+def test_blur_composite_core_blurred_outside_untouched():
+    rng = np.random.default_rng(1)
+    src = rng.integers(0, 256, (120, 120, 3), dtype=np.uint8)
+    out = src.copy()
+    region = {"id": "a", "shape": "ellipse", "box": [30, 30, 40, 40], "points": None, "block": 8,
+              "effect": {"type": "blur", "strength": 1, "color": "#000000"}}
+    apply_region(src, out, region)
+    changed = (out != src).any(axis=2)
+    assert changed[50, 50]
+    assert not changed[:5].any() and not changed[:, :5].any()
+    hard = shape_bitmap("ellipse", 40, 40, None)
+    assert changed[30:70, 30:70][hard].mean() > 0.95  # blurred noise differs from src everywhere in the core
+
+
+def test_rect_blur_unchanged_hard_edge():
+    rng = np.random.default_rng(2)
+    src = rng.integers(0, 256, (80, 80, 3), dtype=np.uint8)
+    out = src.copy()
+    region = {"id": "a", "shape": "rect", "box": [20, 20, 30, 30], "points": None, "block": 8,
+              "effect": {"type": "blur", "strength": 1, "color": "#000000"}}
+    apply_region(src, out, region)
+    changed = (out != src).any(axis=2)
+    assert not changed[:20].any() and not changed[50:].any() and not changed[:, :20].any() and not changed[:, 50:].any()
+
+
+def test_default_effect_is_blur():
+    assert normalize_effect(None)["type"] == "blur"
+    assert normalize_effect({"type": "nope"})["type"] == "blur"
+    assert normalize_effect({"type": "mosaic"})["type"] == "mosaic"

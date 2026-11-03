@@ -2,6 +2,7 @@ import json
 
 import cv2
 import numpy as np
+from mosaic_worker.shapes import soft_extent
 import pytest
 
 from helpers import make_video, moving_face_frames
@@ -330,7 +331,18 @@ def test_blur_region_partially_outside_frame_fills_mask(box, shape):
     inside[rows, cols] = mask
     assert inside.any()
     assert (out[inside] == 200).all()
-    assert (out[~inside] == 0).all()
+    if shape == "ellipse":
+        # blur on an ellipse has a soft band outside the core (blended with what `out` held: 0 here);
+        # beyond the enlarged extent nothing is written
+        x, y, w, h = box
+        sx0, sy0, sx1, sy1 = soft_extent(w, h)
+        ext = np.zeros(src.shape[:2], bool)
+        ext[max(0, y + sy0) : min(120, y + sy1), max(0, x + sx0) : min(160, x + sx1)] = True
+        assert (out[~ext] == 0).all()
+        band = ext & ~inside
+        assert (out[band] <= 200).all() and ((out[band] > 0) & (out[band] < 200)).any()
+    else:
+        assert (out[~inside] == 0).all()
 
 
 def test_compose_frame_logs_each_failing_region_once_per_render(monkeypatch):

@@ -6,6 +6,7 @@ import reviewSample from '../../../../contracts/fixtures/review.sample.json';
 import expectedRegionsSample from '../../../../contracts/fixtures/expected-regions.json';
 import effectParamsSample from '../../../../contracts/fixtures/effect-params.json';
 import shapeMasksSample from '../../../../contracts/fixtures/shape-masks.json';
+import softEllipseSample from '../../../../contracts/fixtures/soft-ellipse-alpha.json';
 import type { Edits, ManualDoc, ReviewDoc, TracksDoc } from './types';
 
 export const tracksDoc = tracksSample as unknown as TracksDoc;
@@ -24,3 +25,6 @@ export const shapeMaskCases = shapeMasksSample as unknown as {
   window?: [number, number, number, number];
   rows: string[];
 }[];
+export const softEllipseCases = (softEllipseSample as unknown as {
+  cases: { name: string; box: [number, number, number, number]; effect: { type: string }; samples: [number, number, number][] }[];
+}).cases;

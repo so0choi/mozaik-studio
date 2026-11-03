@@ -19,9 +19,45 @@ contracts/fixtures/shape-masks.json.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 MIN_SHAPE_SIZE = 4
+# stored track box is the raw detection grown 25%; the face ellipse circumscribes the raw box with margin
+FACE_ELLIPSE_SCALE = 1.15
+# soft edge width of a blurred ellipse, in ellipse radii (alpha falls 1 -> 0 over r in [1, 1 + SOFT_EDGE])
+SOFT_EDGE = 0.35
+
+
+def face_ellipse_box(box) -> list[int]:
+    """Ellipse box [x, y, w, h] (outward-rounded ints) for a stored auto-track box."""
+    x, y, w, h = box[:4]
+    cx, cy = x + w / 2, y + h / 2
+    a, b = (w / 2) * FACE_ELLIPSE_SCALE, (h / 2) * FACE_ELLIPSE_SCALE
+    return [math.floor(cx - a), math.floor(cy - b), math.ceil(2 * a) + 1, math.ceil(2 * b) + 1]
+
+
+def soft_extent(w: int, h: int) -> tuple[int, int, int, int]:
+    """Box-relative (x0, y0, x1, y1), unclipped: the box scaled by 1 + SOFT_EDGE around its centre, outward-rounded."""
+    k = (1 + SOFT_EDGE) / 2
+    return (math.floor(w / 2 - w * k), math.floor(h / 2 - h * k), math.ceil(w / 2 + w * k), math.ceil(h / 2 + h * k))
+
+
+def soft_ellipse_alpha(w: int, h: int, window: tuple[int, int, int, int]) -> np.ndarray:
+    """Float alpha in [0, 1] of a soft ellipse for box-relative `window` (x0, y0, x1, y1), which may
+    extend outside the box. alpha = 1 exactly where shape_bitmap('ellipse') is set (core)."""
+    x0, y0, x1, y1 = (int(v) for v in window)
+    px = (np.arange(x0, x1, dtype=np.float64) + 0.5)[None, :]
+    py = (np.arange(y0, y1, dtype=np.float64) + 0.5)[:, None]
+    rx, ry = w / 2, h / 2
+    r2 = ((px - rx) / rx) ** 2 + ((py - ry) / ry) ** 2
+    t = (np.sqrt(r2) - 1) / SOFT_EDGE
+    tc = np.clip(t, 0.0, 1.0)
+    alpha = 1 - (3 * tc**2 - 2 * tc**3)
+    alpha[r2 <= 1.0] = 1.0
+    alpha[t >= 1.0] = 0.0
+    return alpha
 
 
 def _shoelace_area(points) -> float:

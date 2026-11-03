@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import TypedDict
 
 from .effects import normalize_effects, region_block
+from .shapes import face_ellipse_box
 
 
 class Region(TypedDict):
@@ -104,7 +105,8 @@ def mask_regions(tracks_doc: dict, edits: dict, manual: list[dict]) -> dict[int,
             continue
         eff = effect_for(frag_id, track_id, edits)
         for f, box in frames.items():
-            per_frame[f].append(_make_region(frag_id, box, region_block(block, eff["strength"]), eff))
+            per_frame[f].append(
+                _make_region(frag_id, face_ellipse_box(box), region_block(block, eff["strength"]), eff, "ellipse"))
 
     edit_by_id = {m["id"]: m for m in edits.get("manual", [])}
 

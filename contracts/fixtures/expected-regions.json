@@ -1,14 +1,14 @@
 {
- "_comment": "regions after applying edits.sample.json + manual.sample.json to tracks.sample.json; frames 0..60 all have regions (t2a 0-44, t3 30-59, m1 44-46, m3 60), frame 89 has none and is absent; sorted by (x,y)",
+ "_comment": "regions after applying edits.sample.json + manual.sample.json to tracks.sample.json; frames 0..60 all have regions (t2a 0-44, t3 30-59, m1 44-46, m3 60), frame 89 has none and is absent; sorted by (x,y); auto track regions are face ellipses (shapes.face_ellipse_box of the stored box)",
  "0": [
   {
    "id": "t2a",
-   "shape": "rect",
+   "shape": "ellipse",
    "box": [
-    300,
-    120,
-    80,
-    80
+    294,
+    114,
+    93,
+    93
    ],
    "points": null,
    "effect": {
@@ -39,12 +39,12 @@
   },
   {
    "id": "t2a",
-   "shape": "rect",
+   "shape": "ellipse",
    "box": [
-    300,
-    120,
-    80,
-    80
+    294,
+    114,
+    93,
+    93
    ],
    "points": null,
    "effect": {
@@ -56,12 +56,12 @@
   },
   {
    "id": "t3",
-   "shape": "rect",
+   "shape": "ellipse",
    "box": [
-    500,
-    50,
-    48,
-    64
+    496,
+    45,
+    57,
+    75
    ],
    "points": null,
    "effect": {
@@ -92,12 +92,12 @@
   },
   {
    "id": "t3",
-   "shape": "rect",
+   "shape": "ellipse",
    "box": [
-    500,
-    50,
-    48,
-    64
+    496,
+    45,
+    57,
+    75
    ],
    "points": null,
    "effect": {
@@ -111,12 +111,12 @@
  "47": [
   {
    "id": "t3",
-   "shape": "rect",
+   "shape": "ellipse",
    "box": [
-    500,
-    50,
-    48,
-    64
+    496,
+    45,
+    57,
+    75
    ],
    "points": null,
    "effect": {

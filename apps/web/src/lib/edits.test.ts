@@ -72,7 +72,7 @@ const blur = { type: 'blur', strength: 2, color: '#000000' } as const;
 describe('normalizeEdits fills effect defaults', () => {
   it('missing effects', () => {
     expect(normalizeEdits({}).effects).toEqual({
-      default: { type: 'mosaic', strength: 1, color: '#000000' }, background: null, overrides: {},
+      default: { type: 'blur', strength: 1, color: '#000000' }, background: null, overrides: {},
     });
   });
   it('missing strength / color and partial objects', () => {
@@ -88,7 +88,7 @@ describe('normalizeEdits fills effect defaults', () => {
       background: { type: 'color', strength: 1, color: '#ff0000' },
       overrides: {
         t1: { type: 'color', strength: 1, color: '#000000' },
-        t2: { type: 'mosaic', strength: 1, color: '#000000' },
+        t2: { type: 'blur', strength: 1, color: '#000000' },
       },
     });
   });

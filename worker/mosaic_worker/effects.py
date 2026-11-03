@@ -9,7 +9,7 @@ import math
 import cv2
 import numpy as np
 
-from .shapes import shape_bitmap
+from .shapes import MIN_SHAPE_SIZE, shape_bitmap, soft_ellipse_alpha, soft_extent
 
 EFFECT_TYPES = ("mosaic", "blur", "color")
 DEFAULT_COLOR = "#000000"
@@ -21,7 +21,7 @@ def normalize_effect(eff: dict | None) -> dict:
     s = eff.get("strength")
     c = eff.get("color")
     return {
-        "type": t if t in EFFECT_TYPES else "mosaic",
+        "type": t if t in EFFECT_TYPES else "blur",
         "strength": int(s) if isinstance(s, int) and not isinstance(s, bool) and 1 <= s <= 5 else 1,
         "color": c if isinstance(c, str) else DEFAULT_COLOR,
     }
@@ -100,6 +100,25 @@ def shape_mask(region: dict, frame_w: int, frame_h: int) -> tuple[slice, slice, 
     return slice(y0, y1), slice(x0, x1), bm
 
 
+def _blur_window(src: np.ndarray, rows: slice, cols: slice, sigma: float) -> np.ndarray:
+    """Gaussian blur of src[rows, cols], computed with a 3-sigma margin of real frame content."""
+    fh, fw = src.shape[:2]
+    m = math.ceil(3 * sigma)
+    y0, y1 = max(0, rows.start - m), min(fh, rows.stop + m)
+    x0, x1 = max(0, cols.start - m), min(fw, cols.stop + m)
+    win = src[y0:y1, x0:x1]
+    ww, wh = x1 - x0, y1 - y0
+    f = max(1, int(sigma // 4))
+    if f > 1:
+        sw, sh = max(1, -(-ww // f)), max(1, -(-wh // f))
+        small = cv2.resize(win, (sw, sh), interpolation=cv2.INTER_AREA)
+        small = cv2.GaussianBlur(small, (0, 0), sigmaX=sigma / f, borderType=cv2.BORDER_REPLICATE)
+        big = cv2.resize(small, (ww, wh), interpolation=cv2.INTER_LINEAR)
+    else:
+        big = cv2.GaussianBlur(win, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REPLICATE)
+    return big[rows.start - y0 : rows.stop - y0, cols.start - x0 : cols.stop - x0]
+
+
 def apply_region(src: np.ndarray, out: np.ndarray, region: dict) -> None:
     """Compute the region's effect from `src` and write it into `out` where the shape mask is set."""
     fh, fw = src.shape[:2]
@@ -113,21 +132,20 @@ def apply_region(src: np.ndarray, out: np.ndarray, region: dict) -> None:
         res = src[rows, cols].copy()
         pixelate(res, (x - cols.start, y - rows.start, w, h), region["block"])
     elif kind == "blur":
-        sigma = region_sigma(w, h, eff["strength"])
-        m = math.ceil(3 * sigma)
-        y0, y1 = max(0, rows.start - m), min(fh, rows.stop + m)
-        x0, x1 = max(0, cols.start - m), min(fw, cols.stop + m)
-        win = src[y0:y1, x0:x1]
-        ww, wh = x1 - x0, y1 - y0
-        f = max(1, int(sigma // 4))
-        if f > 1:
-            sw, sh = max(1, -(-ww // f)), max(1, -(-wh // f))
-            small = cv2.resize(win, (sw, sh), interpolation=cv2.INTER_AREA)
-            small = cv2.GaussianBlur(small, (0, 0), sigmaX=sigma / f, borderType=cv2.BORDER_REPLICATE)
-            big = cv2.resize(small, (ww, wh), interpolation=cv2.INTER_LINEAR)
-        else:
-            big = cv2.GaussianBlur(win, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REPLICATE)
-        res = big[rows.start - y0 : rows.stop - y0, cols.start - x0 : cols.stop - x0]
+        soft = region["shape"] == "ellipse" and w >= MIN_SHAPE_SIZE and h >= MIN_SHAPE_SIZE
+        if soft:
+            sx0, sy0, sx1, sy1 = soft_extent(w, h)
+            rows = slice(max(0, y + sy0), min(fh, y + sy1))
+            cols = slice(max(0, x + sx0), min(fw, x + sx1))
+            if rows.stop <= rows.start or cols.stop <= cols.start:
+                return
+        res = _blur_window(src, rows, cols, region_sigma(w, h, eff["strength"]))
+        if soft:
+            alpha = soft_ellipse_alpha(w, h, (cols.start - x, rows.start - y, cols.stop - x, rows.stop - y))[..., None]
+            # blend over what is already in `out` (earlier regions / background), so a band never re-exposes the raw frame
+            blended = alpha * res.astype(np.float64) + (1 - alpha) * out[rows, cols].astype(np.float64)
+            out[rows, cols] = np.floor(blended + 0.5).astype(np.uint8)
+            return
     elif kind == "color":
         res = np.empty_like(src[rows, cols])
         res[:] = _hex_to_bgr(eff["color"])

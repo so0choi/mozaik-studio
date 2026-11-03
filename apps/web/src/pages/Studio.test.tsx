@@ -954,9 +954,9 @@ describe('Studio right column', () => {
     await userEvent.click(await card('t2'));
     const detail = await screen.findByTestId('target-detail');
     const chip = () => document.querySelector('.tchip.fx')!;
-    expect(chip()).toHaveTextContent('모자이크');
-    await userEvent.click(within(detail).getByRole('button', { name: '블러' }));
     expect(chip()).toHaveTextContent('블러');
+    await userEvent.click(within(detail).getByRole('button', { name: '모자이크' }));
+    expect(chip()).toHaveTextContent('모자이크');
     await userEvent.click(within(detail).getByRole('button', { name: '원본 · 가림 해제' }));
     expect(chip()).toHaveTextContent('원본');
     expect(chip().className).toContain('v');

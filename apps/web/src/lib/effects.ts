@@ -1,7 +1,7 @@
 import type { Rect } from './geometry';
 import { toDisplay } from './geometry';
 import { backgroundBlock, backgroundSigma, regionSigma } from './effectParams';
-import { shapeBitmap } from './shapes';
+import { MIN_SHAPE_SIZE, shapeBitmap, softEllipseAlpha, softExtent } from './shapes';
 import type { Effect, Region } from './types';
 
 /** An image the mask is sampled from. `ready` is false while no frame can be decodable. */
@@ -190,10 +190,13 @@ function drawRegion(
   if (w <= 0 || h <= 0) return;
   // only the frame-visible part of the box is ever drawn: canvases are sized from this window, never
   // from the (possibly huge or far off-frame) box
-  const wx0 = Math.max(0, x);
-  const wy0 = Math.max(0, y);
-  const wx1 = Math.min(srcW, x + w);
-  const wy1 = Math.min(srcH, y + h);
+  // a blurred ellipse also draws its soft band: the window is the box grown by SOFT_EDGE
+  const soft = r.effect.type === 'blur' && r.shape === 'ellipse' && w >= MIN_SHAPE_SIZE && h >= MIN_SHAPE_SIZE;
+  const [sx0, sy0, sx1, sy1] = soft ? softExtent(w, h) : [0, 0, w, h];
+  const wx0 = Math.max(0, x + sx0);
+  const wy0 = Math.max(0, y + sy0);
+  const wx1 = Math.min(srcW, x + sx1);
+  const wy1 = Math.min(srcH, y + sy1);
   const ww = wx1 - wx0;
   const wh = wy1 - wy0;
   if (!(ww > 0) || !(wh > 0)) throw new Error('region outside the frame');
@@ -239,8 +242,24 @@ function drawRegion(
     octx.fillRect(0, 0, ww, wh);
   }
 
-  // (3) shape alpha, strictly 0 / 255 (the same window bitmap as the render)
-  if (r.shape !== 'rect') {
+  // (3) shape alpha: strictly 0 / 255, except the soft band of a blurred ellipse (same alpha as the render)
+  if (soft) {
+    const a = softEllipseAlpha(w, h, [ox0, oy0, ox0 + ww, oy0 + wh]);
+    const data = new Uint8ClampedArray(a.length * 4);
+    for (let i = 0; i < a.length; i++) data[i * 4 + 3] = Math.round(a[i] * 255);
+    const mask = maskCanvasFor(off);
+    mask.width = ww;
+    mask.height = wh;
+    if (mask.width !== ww || mask.height !== wh) throw new Error('canvas allocation failed');
+    const mctx = mask.getContext('2d');
+    if (!mctx) throw new Error('no mask canvas');
+    const img = mctx.createImageData(ww, wh);
+    img.data.set(data);
+    mctx.putImageData(img, 0, 0);
+    octx.globalCompositeOperation = 'destination-in';
+    octx.drawImage(mask, 0, 0);
+    octx.globalCompositeOperation = 'source-over';
+  } else if (r.shape !== 'rect') {
     const pts = r.points ? r.points.map(([px, py]): [number, number] => [px - x, py - y]) : null;
     const bm = shapeBitmap(r.shape, w, h, pts, [ox0, oy0, ox0 + ww, oy0 + wh]);
     const mask = maskCanvasFor(off);

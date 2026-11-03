@@ -12,7 +12,7 @@ export function normalizeEffect(eff: unknown): Effect {
   const s = e.strength;
   const c = e.color;
   return {
-    type: EFFECT_TYPES.includes(t as EffectType) ? (t as EffectType) : 'mosaic',
+    type: EFFECT_TYPES.includes(t as EffectType) ? (t as EffectType) : 'blur',
     strength: typeof s === 'number' && Number.isInteger(s) && s >= 1 && s <= 5 ? s : 1,
     color: typeof c === 'string' ? c : DEFAULT_COLOR,
   };

@@ -30,12 +30,12 @@ def test_matches_expected_regions_exactly():
     assert 89 not in result
 
 
-def test_auto_tracks_always_rect():
+def test_auto_tracks_are_face_ellipses():
     tracks, edits, manual = sample()
     edits["effects"]["overrides"]["t2a"] = {"type": "blur", "strength": 5}
     result = mask_regions(tracks, edits, manual)
     auto = [r for rs in result.values() for r in rs if r["id"] in ("t2a", "t3")]
-    assert auto and all(r["shape"] == "rect" and r["points"] is None for r in auto)
+    assert auto and all(r["shape"] == "ellipse" and r["points"] is None for r in auto)
 
 
 def test_group_override_beats_track_override():
@@ -103,7 +103,7 @@ def test_effect_defaults_filled():
     tracks, edits, manual = sample()
     del edits["effects"]
     r = mask_regions(tracks, edits, manual)
-    assert all(x["effect"] == {"type": "mosaic", "strength": 1, "color": "#000000"} for rs in r.values() for x in rs)
+    assert all(x["effect"] == {"type": "blur", "strength": 1, "color": "#000000"} for rs in r.values() for x in rs)
 
 
 def test_mask_set_unchanged_by_effects():
@@ -118,7 +118,7 @@ def test_mask_set_unchanged_by_effects():
 def test_split_boundary_frame_belongs_to_b():
     tracks, edits = load("tracks.sample.json"), load("edits.sample.json")
     r = boxes_by_frame(mask_regions(tracks, edits, []))
-    t2_box = (300, 120, 80, 80)
+    t2_box = (294, 114, 93, 93)  # face ellipse of the stored box (300, 120, 80, 80)
     assert t2_box in r[44] and t2_box not in r[45]  # t2a masked < 45, t2b visible >= 45
 
 
@@ -142,7 +142,8 @@ def test_default_masks_everything_and_groups_unhide():
     assert len(r[40]) == 3 and len(r[0]) == 2  # t1, t2 (and t3 from frame 30)
     grouped = dict(base, visible=["g1"], groups=[{"id": "g1", "trackIds": ["t1", "t2"], "label": "x"}])
     r = mask_boxes5(tracks, grouped, [])
-    assert r[40] == [(500, 50, 48, 64, 8)] and 0 not in r
+    assert r[40] == [(496, 45, 57, 75, 8)]  # face ellipse of stored (500, 50, 48, 64)
+    assert 0 not in r
 
 
 def test_manual_without_edit_entry_is_masked():

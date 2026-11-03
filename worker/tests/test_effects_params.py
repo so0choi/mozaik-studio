@@ -24,9 +24,9 @@ def test_strength_factor():
 
 def test_normalize_effects_fills_defaults():
     assert effects.normalize_effects({}) == {
-        "default": {"type": "mosaic", "strength": 1, "color": "#000000"}, "background": None, "overrides": {}}
+        "default": {"type": "blur", "strength": 1, "color": "#000000"}, "background": None, "overrides": {}}
     n = effects.normalize_effects({"effects": {"default": {"type": "blur"}, "background": {"strength": 4},
                                                 "overrides": {"t1": {"color": "#ff0000"}}}})
     assert n["default"] == {"type": "blur", "strength": 1, "color": "#000000"}
-    assert n["background"] == {"type": "mosaic", "strength": 4, "color": "#000000"}
-    assert n["overrides"]["t1"] == {"type": "mosaic", "strength": 1, "color": "#ff0000"}
+    assert n["background"] == {"type": "blur", "strength": 4, "color": "#000000"}
+    assert n["overrides"]["t1"] == {"type": "blur", "strength": 1, "color": "#ff0000"}

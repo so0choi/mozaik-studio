@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { effectFor } from './masks';
-import { normalizeEffects, backgroundBlock, backgroundSigma, regionBlock, regionSigma } from './effectParams';
+import { normalizeEffect, normalizeEffects, backgroundBlock, backgroundSigma, regionBlock, regionSigma } from './effectParams';
 import { effectParamCases } from './fixtures';
 
 const fns: Record<string, (...a: number[]) => number> = {
@@ -36,7 +36,7 @@ describe('normalizeEffects prototype safety', () => {
 
   it('effectFor ignores reserved ids and still reads own overrides', () => {
     const edits = { ...evil, groups: [], visible: [] } as never;
-    expect(effectFor('constructor', 'constructor', edits).type).toBe('mosaic');
+    expect(effectFor('constructor', 'constructor', edits).type).toBe('blur');
     expect(effectFor('t1', 't1', edits).type).toBe('color');
   });
 
@@ -48,5 +48,13 @@ describe('normalizeEffects prototype safety', () => {
     expect(bg(1)).toBeNull();
     expect(bg(null)).toBeNull();
     expect(bg({ type: 'blur' })?.type).toBe('blur');
+  });
+});
+
+describe('default effect', () => {
+  it('is blur when type is missing or invalid; an explicit type is kept', () => {
+    expect(normalizeEffect(undefined).type).toBe('blur');
+    expect(normalizeEffect({ type: 'nope' }).type).toBe('blur');
+    expect(normalizeEffect({ type: 'mosaic' }).type).toBe('mosaic');
   });
 });

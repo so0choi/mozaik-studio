@@ -26,8 +26,8 @@ describe('maskRegions (shared fixture with worker compose)', () => {
   });
 
   it('puts split boundary frame 45 on t2b (visible) so t2a box is gone', () => {
-    expect(m.get(44)!.some((r) => r.box[0] === 300)).toBe(true);
-    expect((m.get(45) ?? []).some((r) => r.box[0] === 300)).toBe(false);
+    expect(m.get(44)!.some((r) => r.box[0] === 294)).toBe(true);
+    expect((m.get(45) ?? []).some((r) => r.box[0] === 294)).toBe(false);
   });
 
   it('ignores deleted manual m2 and trims m1 to 44..46', () => {
@@ -52,7 +52,7 @@ describe('maskRegions (shared fixture with worker compose)', () => {
       manual: [{ id: 'm9', anchors: [{ frame: 7, box: [10, 20, 80, 64] }], trim: null, deleted: false }],
     });
     expect(maskRegions(tracksDoc, e, []).get(7)).toEqual([
-      { id: 'm9', shape: 'rect', box: [10, 20, 80, 64], points: null, effect: E('mosaic'), block: 8 },
+      { id: 'm9', shape: 'rect', box: [10, 20, 80, 64], points: null, effect: E('blur'), block: 8 },
     ]);
   });
 

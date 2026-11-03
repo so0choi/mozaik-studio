@@ -13,6 +13,54 @@ import type { Shape } from './types';
  * unknown shape are all fully included: a shape must never leave part of a box unmasked.
  */
 export const MIN_SHAPE_SIZE = 4;
+/** Stored track box is the raw detection grown 25%; the face ellipse circumscribes the raw box with margin. */
+export const FACE_ELLIPSE_SCALE = 1.15;
+/** Soft edge width of a blurred ellipse, in ellipse radii (alpha falls 1 -> 0 over r in [1, 1 + SOFT_EDGE]). */
+export const SOFT_EDGE = 0.35;
+
+/** Ellipse box [x, y, w, h] (outward-rounded ints) for a stored auto-track box. Port of shapes.face_ellipse_box. */
+export function faceEllipseBox(box: readonly [number, number, number, number]): [number, number, number, number] {
+  const [x, y, w, h] = box;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const a = (w / 2) * FACE_ELLIPSE_SCALE;
+  const b = (h / 2) * FACE_ELLIPSE_SCALE;
+  return [Math.floor(cx - a), Math.floor(cy - b), Math.ceil(2 * a) + 1, Math.ceil(2 * b) + 1];
+}
+
+/** Box-relative [x0, y0, x1, y1], unclipped: the box scaled by 1 + SOFT_EDGE around its centre, outward-rounded. */
+export function softExtent(w: number, h: number): [number, number, number, number] {
+  const k = (1 + SOFT_EDGE) / 2;
+  return [Math.floor(w / 2 - w * k), Math.floor(h / 2 - h * k), Math.ceil(w / 2 + w * k), Math.ceil(h / 2 + h * k)];
+}
+
+/**
+ * Float alpha (row-major, 0..1) of a soft ellipse over the box-relative `window` [x0, y0, x1, y1], which may
+ * extend outside the box. alpha is exactly 1 where shapeBitmap('ellipse') is set. Port of shapes.soft_ellipse_alpha.
+ */
+export function softEllipseAlpha(w: number, h: number, window: readonly [number, number, number, number]): Float64Array {
+  const [x0, y0, x1, y1] = window;
+  const ww = x1 - x0;
+  const wh = y1 - y0;
+  const out = new Float64Array(Math.max(0, ww) * Math.max(0, wh));
+  const rx = w / 2;
+  const ry = h / 2;
+  for (let j = 0; j < wh; j++) {
+    const dy = (y0 + j + 0.5 - ry) / ry;
+    for (let i = 0; i < ww; i++) {
+      const dx = (x0 + i + 0.5 - rx) / rx;
+      const r2 = dx * dx + dy * dy;
+      let a: number;
+      if (r2 <= 1) a = 1;
+      else {
+        const t = (Math.sqrt(r2) - 1) / SOFT_EDGE;
+        a = t >= 1 ? 0 : 1 - (3 * t * t - 2 * t * t * t);
+      }
+      out[j * ww + i] = a;
+    }
+  }
+  return out;
+}
 
 function shoelaceArea(points: [number, number][]): number {
   let a = 0;

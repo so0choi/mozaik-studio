@@ -1,4 +1,5 @@
 import { normalizeEffects, regionBlock } from './effectParams';
+import { faceEllipseBox } from './shapes';
 import { pieces, visibleIds } from './pieces';
 import type { Box, Edits, Effect, ManualDoc, ManualEdit, Region, Shape, TracksDoc } from './types';
 
@@ -97,7 +98,7 @@ export function maskRegions(
     for (const [k, box] of Object.entries(p.track.frames)) {
       const f = Number(k);
       if (f < p.from || f > p.to) continue;
-      push(f, makeRegion(p.id, box, regionBlock(p.track.blockSize, eff.strength), eff));
+      push(f, makeRegion(p.id, faceEllipseBox(box), regionBlock(p.track.blockSize, eff.strength), eff, 'ellipse'));
     }
   }
 
