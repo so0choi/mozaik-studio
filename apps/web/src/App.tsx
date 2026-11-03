@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ApiError, api } from './lib/api';
-import { Jobs } from './pages/Jobs';
+import { Upload } from './pages/Upload';
 import { Login } from './pages/Login';
 import { Studio } from './pages/Studio';
 
@@ -28,7 +28,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/" element={<RequireAuth><Jobs /></RequireAuth>} />
+      <Route path="/" element={<RequireAuth><Upload /></RequireAuth>} />
       <Route path="/jobs/:id" element={<RequireAuth><Studio /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

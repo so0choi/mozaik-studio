@@ -238,7 +238,9 @@ describe('Studio review and render', () => {
 
   it('shows a progress message while the job is not ready yet', async () => {
     setup({ job: job({ state: 'analyzing', progress: 37 }) });
-    expect(await screen.findByText('분석 중 37%')).toBeInTheDocument();
+    expect(await screen.findByText('얼굴 찾는 중 37%')).toBeInTheDocument();
+    expect(screen.getByTestId('shell-left')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByTestId('dropzone')).toBeNull();
   });
 });
 

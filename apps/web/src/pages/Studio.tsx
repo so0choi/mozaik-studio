@@ -41,6 +41,7 @@ import { requiredItems } from '../lib/reviewRequired';
 import { bulkConfirmable, confirmGroupEdits, groupItems, groupOf } from '../lib/reviewGroups';
 import { ReviewCard, ReviewUpcoming, optionCount, type ReviewStage } from '../studio/ReviewCard';
 import { Timeline } from '../studio/Timeline';
+import { EmptyShell } from '../studio/EmptyShell';
 import { Header } from './Header';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -259,7 +260,8 @@ export function Studio() {
   // 5-second windows; the queue walks them group by group (suspect-only items last inside a window)
   const groups = useMemo(() => groupItems(required, tracks?.fps ?? 30, isSuspect), [required, tracks, isSuspect]);
   const unresolved = useMemo(() => groups.flatMap((g) => g.items), [groups]);
-  const hiddenCount = reviewItems.length - unresolved.length - reviewItems.filter((i) => reviewed.has(i.id)).length;
+  const advisory = useMemo(() => reviewItems.filter((i) => i.type !== 'crossing' && i.severity === 'advisory' && !reviewed.has(i.id)), [reviewItems, reviewed]);
+  const hiddenCount = reviewItems.length - unresolved.length - advisory.length - reviewItems.filter((i) => reviewed.has(i.id)).length;
   const resolved = useMemo(() => reviewItems.filter((i) => reviewed.has(i.id)), [reviewItems, reviewed]);
   const current = peopleList.find((p) => p.key === currentKey) ?? null;
   const trackingCount = Object.values(manualState).filter((s) => s === 'tracking').length;
@@ -867,29 +869,39 @@ export function Studio() {
     );
   }
   if (!job || !EDITABLE.includes(job.state) || !tracks) {
+    const failed = job?.state === 'failed';
+    const pct = job?.state === 'analyzing' ? job.progress : job?.state === 'normalizing' ? 100 : 0;
     const msg = !job
       ? '불러오는 중'
-      : job.state === 'failed'
+      : failed
         ? (job.error ?? '처리에 실패했습니다.')
         : EDITABLE.includes(job.state)
           ? '불러오는 중'
           : job.state === 'analyzing'
-            ? `분석 중 ${job.progress}%`
+            ? `얼굴 찾는 중 ${job.progress}%`
             : job.state === 'normalizing'
               ? '영상 변환 중'
-              : '처리 대기 중';
+              : '대기 중';
     return (
-      <>
-        <Header />
-        <main id="main" className="status-box">
-          <div role="status">
-            <p>{msg}</p>
-            <p>
-              <Link to="/">작업 목록으로</Link>
+      <EmptyShell
+        center={
+          <div className="up-wrap" role="status">
+            <p className="up-prog-t" style={{ textAlign: 'center' }}>
+              {msg}
             </p>
+            {job && !failed && (
+              <div className="bar-prog" role="progressbar" aria-label="처리 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                <i style={{ width: `${pct}%` }} />
+              </div>
+            )}
+            {failed && (
+              <p style={{ textAlign: 'center' }}>
+                <Link to="/">다른 파일 올리기</Link>
+              </p>
+            )}
           </div>
-        </main>
-      </>
+        }
+      />
     );
   }
 
@@ -993,6 +1005,11 @@ export function Studio() {
                 isSuspect={isSuspect}
                 done={resolved}
                 hiddenCount={hiddenCount}
+                advisory={advisory}
+                onSeekItem={(id) => {
+                  const it = reviewItems.find((x) => x.id === id);
+                  if (it) seek(it.startFrame);
+                }}
                 fps={fps}
                 whoOf={whoOf}
                 onSelect={selectItem}
