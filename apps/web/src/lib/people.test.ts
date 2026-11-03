@@ -109,3 +109,33 @@ describe('people suspect', () => {
     expect(all.suspect).toBe(true);
   });
 });
+
+describe('people nonface / faceSide', () => {
+  const flag = (ids: string[]): TracksDoc => ({
+    ...tracksDoc,
+    tracks: tracksDoc.tracks.map((t) => (ids.includes(t.id) ? { ...t, suspect: true, nonface: true } : t)),
+  });
+
+  it('absent field -> nonface false', () => {
+    expect(people(tracksDoc, emptyEdits()).every((p) => p.nonface === false)).toBe(true);
+  });
+
+  it('group is nonface only if every piece is', () => {
+    const e = groupPersons(tracksDoc, emptyEdits(), ['t1', 't3']);
+    expect(people(flag(['t1']), e).find((p) => p.key === 'g1')!.nonface).toBe(false);
+    expect(people(flag(['t1', 't3']), e).find((p) => p.key === 'g1')!.nonface).toBe(true);
+  });
+
+  it('faceSide is the median of max(w,h) over frames', () => {
+    const doc: TracksDoc = {
+      ...tracksDoc,
+      tracks: [
+        { ...tracksDoc.tracks[0], id: 'm1', frames: { '0': [0, 0, 10, 30], '1': [0, 0, 50, 20], '2': [0, 0, 40, 40] } } as never,
+        { ...tracksDoc.tracks[0], id: 'm2', frames: {} } as never,
+      ],
+    };
+    const ps = people(doc, emptyEdits());
+    expect(ps.find((p) => p.key === 'm1')!.faceSide).toBe(40);
+    expect(ps.find((p) => p.key === 'm2')!.faceSide).toBe(0);
+  });
+});

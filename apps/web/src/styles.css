@@ -257,6 +257,7 @@ h2.sect{font-size:15px;font-weight:800;padding:var(--s2) 2px 0}
 .st-img img{width:100%;height:100%;object-fit:cover;display:block}
 .st-ck{position:absolute;top:4px;left:4px}
 .st-chip{position:absolute;right:4px;bottom:4px;font-size:10px;font-weight:800;padding:1px 6px;border-radius:99px;background:var(--primary-soft);color:var(--primary)}
+.st-chip.st-likely{right:4px;top:4px;bottom:auto;background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn)}
 .st-chip.v{background:var(--visible-bg);color:var(--visible)}
 .st-label{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st-sub{font-family:var(--mono);color:var(--muted)}

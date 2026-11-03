@@ -814,52 +814,58 @@ describe('Studio ManualBoxCard', () => {
 });
 
 describe('Studio suspect tracks', () => {
+  // t1 is flagged nonface by the worker (pre-checked); t3 is a plain suspect (unchecked)
   const suspectDoc = {
     ...tracksDoc,
-    tracks: tracksDoc.tracks.map((t) => (t.id === 't1' || t.id === 't3' ? { ...t, suspect: true } : t)),
+    tracks: tracksDoc.tracks.map((t) =>
+      t.id === 't1' ? { ...t, suspect: true, nonface: true } : t.id === 't3' ? { ...t, suspect: true } : t,
+    ),
   };
+  const ckOf = async (key: string) => within(await card(key)).getByRole('checkbox', { name: /가림 해제 대상/ });
   afterEach(() => vi.restoreAllMocks());
 
-  it('keeps suspects in a collapsed group that expands to tiles', async () => {
+  it('keeps suspects in a collapsed group that expands to tiles; only nonface is pre-checked', async () => {
     setup({ tracks: suspectDoc });
     await card('t2');
     expect(screen.queryByTestId('card-t1')).toBeNull();
     const toggleBtn = screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ });
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/음식, 무늬 등 얼굴이 아닌 것을/)).toBeNull();
+    expect(screen.queryByText(/음식, 손, 무늬 등/)).toBeNull();
     await userEvent.click(toggleBtn);
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText(/음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 진짜 얼굴이면 체크를 풀고/)).toBeInTheDocument();
-    expect(within(await card('t1')).getByRole('checkbox', { name: /가림 해제 대상/ })).toHaveAttribute('aria-checked', 'true');
-    expect(within(await card('t3')).getByRole('checkbox', { name: /가림 해제 대상/ })).toBeInTheDocument();
+    expect(screen.getByText(/가능성이 높은 것은 미리 체크했습니다/)).toBeInTheDocument();
+    expect(await ckOf('t1')).toHaveAttribute('aria-checked', 'true');
+    expect(await ckOf('t3')).toHaveAttribute('aria-checked', 'false');
+    expect(within(await card('t1')).getByText('가능성 높음')).toBeInTheDocument();
+    expect(within(await card('t3')).queryByText('가능성 높음')).toBeNull();
     expect(within(await card('t2')).queryByRole('checkbox', { name: /가림 해제 대상/ })).toBeNull();
   });
 
-  it('confirm=true shows all suspects via one debounced PUT', async () => {
+  it('confirm=true unmasks the pre-checked nonface suspect via one debounced PUT', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const calls = setup({ tracks: suspectDoc });
     await card('t2');
     await userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ }));
-    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
+    await userEvent.click(screen.getByRole('button', { name: '선택한 1개 가림 해제' }));
     expect(confirm).toHaveBeenCalledWith(
-      '얼굴 아닐 수 있음 2개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.',
+      '얼굴 아닐 수 있음 1개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.',
     );
     await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
     await sleep(700);
     expect(puts(calls).length).toBe(1);
-    expect([...(puts(calls)[0].body as Edits).visible].sort()).toEqual(['t1', 't3']);
-    expect(screen.queryByRole('button', { name: '선택한 2개 가림 해제' })).toBeNull();
+    expect([...(puts(calls)[0].body as Edits).visible].sort()).toEqual(['t1']);
+    expect(screen.queryByRole('button', { name: /선택한 \d+개 가림 해제/ })).toBeNull();
   });
 
-  it('unmasks only the checked suspects in one undo step; undo restores them', async () => {
+  it('unmasks a ticked plain suspect together with nonface in one undo step; undo restores them', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const calls = setup({ tracks: suspectDoc });
     await card('t2');
     await userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ }));
-    await userEvent.click(within(await card('t3')).getByRole('checkbox', { name: /가림 해제 대상/ }));
-    await userEvent.click(screen.getByRole('button', { name: '선택한 1개 가림 해제' }));
+    await userEvent.click(await ckOf('t3'));
+    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
     await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
-    expect([...(puts(calls)[0].body as Edits).visible].sort()).toEqual(['t1']);
+    expect([...(puts(calls)[0].body as Edits).visible].sort()).toEqual(['t1', 't3']);
     expect(within(await card('t1')).queryByRole('checkbox')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: '되돌리기' }));
     await waitFor(() => expect(within(screen.getByTestId('card-t1')).getByRole('checkbox')).toBeInTheDocument());
@@ -877,10 +883,10 @@ describe('Studio suspect tracks', () => {
     const calls = setup({ tracks: suspectDoc });
     await card('t2');
     await userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ }));
-    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
+    await userEvent.click(screen.getByRole('button', { name: '선택한 1개 가림 해제' }));
     await sleep(800);
     expect(puts(calls).length).toBe(0);
-    expect(screen.getByRole('button', { name: '선택한 2개 가림 해제' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '선택한 1개 가림 해제' })).toBeInTheDocument();
   });
 });
 

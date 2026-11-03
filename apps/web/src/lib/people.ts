@@ -12,6 +12,21 @@ function mergeSegments(segs: [number, number][]): [number, number][] {
   return out;
 }
 
+function median(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** Median of max(w,h) over the piece's frames (boxes are [x, y, w, h]). */
+function pieceSides(p: Piece): number[] {
+  return pieceFrames(p).map((f) => {
+    const b = p.track.frames[String(f)];
+    return b ? Math.max(b[2], b[3]) : 0;
+  });
+}
+
 function defaultLabel(pieceId: string): string {
   return `인물 ${pieceId.replace(/^[A-Za-z_-]+/, '') || pieceId}`;
 }
@@ -59,6 +74,8 @@ export function people(doc: TracksDoc, edits: Edits): Person[] {
       segments: mergeSegments(segs),
       isGroup,
       suspect: ps.every((p) => p.track.suspect === true),
+      nonface: ps.every((p) => p.track.nonface === true),
+      faceSide: median(ps.flatMap(pieceSides)),
     };
   };
 

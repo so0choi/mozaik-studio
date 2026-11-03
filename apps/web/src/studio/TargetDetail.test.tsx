@@ -9,7 +9,7 @@ const blur: Effect = { type: 'blur', strength: 3, color: '#000000' };
 
 const person = (visible: boolean): Person => ({
   key: 't1', label: '인물 1', trackIds: ['t1'], visible, thumb: '', samples: [], fragmentCount: 1,
-  appearSec: 3, segments: [[0, 10]], isGroup: false, suspect: false,
+  appearSec: 3, segments: [[0, 10]], isGroup: false, suspect: false, nonface: false, faceSide: 50,
 });
 
 function setup(visible: boolean, own: Effect | null = null) {

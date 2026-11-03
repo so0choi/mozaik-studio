@@ -174,7 +174,8 @@ function Row(p: RowProps) {
 interface TileProps {
   person: Person;
   current: boolean;
-  excluded: boolean;
+  /** whether the box is ticked (default: nonface only, flipped by user toggles) */
+  checked: boolean;
   thumbSrc: (path: string) => string;
   onFocusPerson: (key: string) => void;
   onToggleExclude: (key: string) => void;
@@ -183,7 +184,7 @@ interface TileProps {
 function SuspectTile(p: TileProps) {
   const { person } = p;
   const masked = !person.visible;
-  const checked = masked && !p.excluded;
+  const checked = masked && p.checked;
   const cls = ['stile', masked ? '' : 'shown', p.current ? 'current' : ''].filter(Boolean).join(' ');
   return (
     <li className={cls} data-testid={`card-${person.key}`} onClick={() => p.onFocusPerson(person.key)}>
@@ -207,6 +208,7 @@ function SuspectTile(p: TileProps) {
           </button>
         )}
         <span className={`st-chip${masked ? '' : ' v'}`}>{masked ? '가림' : '원본'}</span>
+        {person.nonface && <span className="st-chip st-likely">가능성 높음</span>}
       </div>
       <span className="st-label">{person.label}</span>
       <span className="st-sub">{formatDuration(person.appearSec)}</span>
@@ -221,13 +223,17 @@ function TargetListInner(p: Props) {
   const [autoOpen, setAutoOpen] = useState(true);
   const [manualGroupOpen, setManualGroupOpen] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
-  // suspect tiles the user un-checked (= keep masked); default is everything checked
-  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  // suspect tiles whose checkbox the user flipped away from its default (checked iff nonface)
+  const [toggled, setToggled] = useState<Set<string>>(new Set());
   const rootRef = useRef<HTMLElement>(null);
   const pending = useRef<RevealKey | null>(null);
 
   const main = p.people.filter((x) => !x.suspect);
-  const suspects = p.people.filter((x) => x.suspect);
+  // nonface first, then larger faces first; Array.sort is stable so ties keep their order
+  const suspects = p.people
+    .filter((x) => x.suspect)
+    .sort((a, b) => Number(b.nonface) - Number(a.nonface) || b.faceSide - a.faceSide);
+  const isChecked = (x: Person) => x.nonface !== toggled.has(x.key);
   const q = query.trim().toLowerCase();
   const match = (x: Person) =>
     (!q || x.label.toLowerCase().includes(q)) &&
@@ -235,19 +241,19 @@ function TargetListInner(p: Props) {
   const mainShown = main.filter(match);
   const suspectShown = suspects.filter(match);
   const count = p.people.length;
-  const unmaskKeys = suspectShown.filter((x) => !x.visible && !excluded.has(x.key)).map((x) => x.key);
+  const unmaskKeys = suspectShown.filter((x) => !x.visible && isChecked(x)).map((x) => x.key);
 
-  // drop excluded keys that no longer exist (e.g. after a merge)
+  // drop toggled keys that no longer exist (e.g. after a merge)
   useEffect(() => {
-    setExcluded((prev) => {
+    setToggled((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(p.people.map((x) => x.key));
       const next = new Set([...prev].filter((k) => live.has(k)));
       return next.size === prev.size ? prev : next;
     });
   }, [p.people]);
-  const toggleExclude = (key: string) =>
-    setExcluded((prev) => {
+  const toggleCheck = (key: string) =>
+    setToggled((prev) => {
       const n = new Set(prev);
       if (!n.delete(key)) n.add(key);
       return n;
@@ -402,7 +408,7 @@ function TargetListInner(p: Props) {
             </div>
             {suspectOpen && (
               <div id="suspect-body" className="tg-body">
-                <p className="pl-gnote">음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 진짜 얼굴이면 체크를 풀고, 나머지는 한 번에 가림 해제하세요.</p>
+                <p className="pl-gnote">음식, 손, 무늬 등 얼굴이 아닐 수 있는 영역입니다. 가능성이 높은 것은 미리 체크했습니다. 진짜 얼굴이 보이면 체크를 풀고 한 번에 가림 해제하세요.</p>
                 {suspectShown.length === 0 ? (
                   <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>
                 ) : (
@@ -412,10 +418,10 @@ function TargetListInner(p: Props) {
                         key={x.key}
                         person={x}
                         current={p.currentKey === x.key}
-                        excluded={excluded.has(x.key)}
+                        checked={isChecked(x)}
                         thumbSrc={p.thumbSrc}
                         onFocusPerson={p.onFocusPerson}
-                        onToggleExclude={toggleExclude}
+                        onToggleExclude={toggleCheck}
                       />
                     ))}
                   </ul>

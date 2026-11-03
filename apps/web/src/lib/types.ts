@@ -11,6 +11,8 @@ export interface Track {
   scores?: Record<string, number>;
   /** worker hint: a second look found no face here (may be food/hand/texture). Still masked by default. */
   suspect?: boolean;
+  /** worker: suspect AND no person has a head there. Only pre-selects the tile in review; still masked by default. */
+  nonface?: boolean;
 }
 
 export interface TracksDoc {
@@ -146,4 +148,8 @@ export interface Person {
   isGroup: boolean;
   /** true only if every piece's track is suspect */
   suspect: boolean;
+  /** true only if every piece's track is flagged nonface (likely not a face; pre-checked in the suspect group) */
+  nonface: boolean;
+  /** median over the person's frames of max(w, h) of the face box, in px (0 if no frames) */
+  faceSide: number;
 }

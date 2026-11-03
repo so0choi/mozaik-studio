@@ -6,7 +6,7 @@ import { TargetList, type RevealKey } from './TargetList';
 
 const person = (key: string, over: Partial<Person> = {}): Person => ({
   key, label: `인물 ${key}`, trackIds: [key], visible: false, thumb: `${key}.jpg`, samples: [], fragmentCount: 1,
-  appearSec: 3, segments: [[0, 3]], isGroup: false, suspect: false, ...over,
+  appearSec: 3, segments: [[0, 3]], isGroup: false, suspect: false, nonface: false, faceSide: 50, ...over,
 });
 
 const base = (people: Person[], over: Partial<React.ComponentProps<typeof TargetList>> = {}) => (
@@ -113,25 +113,50 @@ describe('TargetList suspect tiles', () => {
     cleanup();
     vi.restoreAllMocks();
   });
+  // s1/s3 are nonface; s2 is a plain suspect (unchecked by default)
   const people = [
     person('a'),
-    person('s1', { suspect: true }),
-    person('s2', { suspect: true }),
-    person('s3', { suspect: true }),
-    person('sv', { suspect: true, visible: true }),
+    person('s1', { suspect: true, nonface: true, faceSide: 20 }),
+    person('s2', { suspect: true, faceSide: 90 }),
+    person('s3', { suspect: true, nonface: true, faceSide: 60 }),
+    person('s4', { suspect: true, faceSide: 30 }),
+    person('sv', { suspect: true, visible: true, nonface: true }),
   ];
   const open = async () => userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음/ }));
   const ck = (key: string) => within(screen.getByTestId(`card-${key}`)).getByRole('checkbox');
+  const tileKeys = () => screen.getAllByTestId(/^card-s/).map((e) => e.getAttribute('data-testid'));
 
-  it('renders tiles with checked checkboxes; the auto group keeps rows', async () => {
+  it('checks only nonface tiles by default; the auto group keeps rows', async () => {
     render(base(people));
     await open();
-    for (const k of ['s1', 's2', 's3']) {
-      expect(ck(k)).toHaveAttribute('aria-checked', 'true');
-      expect(ck(k)).toHaveAccessibleName(`인물 ${k} 가림 해제 대상`);
-      expect(within(screen.getByTestId(`card-${k}`)).getByText('가림')).toBeInTheDocument();
-    }
+    expect(ck('s1')).toHaveAttribute('aria-checked', 'true');
+    expect(ck('s3')).toHaveAttribute('aria-checked', 'true');
+    expect(ck('s2')).toHaveAttribute('aria-checked', 'false');
+    expect(ck('s4')).toHaveAttribute('aria-checked', 'false');
+    expect(ck('s1')).toHaveAccessibleName('인물 s1 가림 해제 대상');
+    expect(within(screen.getByTestId('card-s1')).getByText('가림')).toBeInTheDocument();
     expect(within(screen.getByTestId('card-a')).getByRole('switch')).toBeInTheDocument();
+  });
+
+  it('shows the 가능성 높음 chip on nonface tiles only', async () => {
+    render(base(people));
+    await open();
+    expect(within(screen.getByTestId('card-s1')).getByText('가능성 높음')).toBeInTheDocument();
+    expect(within(screen.getByTestId('card-s2')).queryByText('가능성 높음')).toBeNull();
+  });
+
+  it('sorts nonface first, then larger face first, otherwise keeps order', async () => {
+    render(base(people));
+    await open();
+    expect(tileKeys()).toEqual(['card-s3', 'card-sv', 'card-s1', 'card-s2', 'card-s4']);
+  });
+
+  it('shows the group note', async () => {
+    render(base(people));
+    await open();
+    expect(
+      screen.getByText('음식, 손, 무늬 등 얼굴이 아닐 수 있는 영역입니다. 가능성이 높은 것은 미리 체크했습니다. 진짜 얼굴이 보이면 체크를 풀고 한 번에 가림 해제하세요.'),
+    ).toBeInTheDocument();
   });
 
   it('already-visible tile has no checkbox, shows 원본, is not counted', async () => {
@@ -140,19 +165,30 @@ describe('TargetList suspect tiles', () => {
     const tile = screen.getByTestId('card-sv');
     expect(within(tile).queryByRole('checkbox')).toBeNull();
     expect(within(tile).getByText('원본')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '선택한 3개 가림 해제' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '선택한 2개 가림 해제' })).toBeInTheDocument();
   });
 
-  it('unchecking one tile then confirming passes only the others', async () => {
+  it('ticking a plain suspect and confirming passes it with the nonface ones', async () => {
     const onShowSuspects = vi.fn();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(base(people, { onShowSuspects }));
     await open();
     await userEvent.click(ck('s2'));
-    expect(ck('s2')).toHaveAttribute('aria-checked', 'false');
-    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
-    expect(confirm).toHaveBeenCalledWith('얼굴 아닐 수 있음 2개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.');
-    expect(onShowSuspects).toHaveBeenCalledWith(['s1', 's3']);
+    expect(ck('s2')).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(screen.getByRole('button', { name: '선택한 3개 가림 해제' }));
+    expect(confirm).toHaveBeenCalledWith('얼굴 아닐 수 있음 3개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.');
+    expect(onShowSuspects).toHaveBeenCalledWith(['s3', 's1', 's2']);
+  });
+
+  it('unchecking a nonface tile removes it from the confirm list', async () => {
+    const onShowSuspects = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(base(people, { onShowSuspects }));
+    await open();
+    await userEvent.click(ck('s1'));
+    expect(ck('s1')).toHaveAttribute('aria-checked', 'false');
+    await userEvent.click(screen.getByRole('button', { name: '선택한 1개 가림 해제' }));
+    expect(onShowSuspects).toHaveBeenCalledWith(['s3']);
   });
 
   it('cancel calls nothing', async () => {
@@ -160,14 +196,19 @@ describe('TargetList suspect tiles', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(base(people, { onShowSuspects }));
     await open();
-    await userEvent.click(screen.getByRole('button', { name: '선택한 3개 가림 해제' }));
+    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
     expect(onShowSuspects).not.toHaveBeenCalled();
   });
 
   it('button is hidden when nothing is selected', async () => {
     render(base(people));
     await open();
-    for (const k of ['s1', 's2', 's3']) await userEvent.click(ck(k));
+    for (const k of ['s1', 's3']) await userEvent.click(ck(k));
+    expect(screen.queryByRole('button', { name: /가림 해제$/ })).toBeNull();
+  });
+
+  it('button is hidden while the group is collapsed', () => {
+    render(base(people));
     expect(screen.queryByRole('button', { name: /가림 해제$/ })).toBeNull();
   });
 
@@ -188,14 +229,13 @@ describe('TargetList suspect tiles', () => {
     expect(screen.getByRole('button', { name: '선택한 1개 가림 해제' })).toBeInTheDocument();
   });
 
-  it('drops excluded keys that no longer exist', async () => {
-    const onShowSuspects = vi.fn();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const { rerender } = render(base(people, { onShowSuspects }));
+  it('drops toggled keys that no longer exist (back to the default)', async () => {
+    const { rerender } = render(base(people));
     await open();
     await userEvent.click(ck('s1'));
-    rerender(base(people.filter((x) => x.key !== 's1'), { onShowSuspects }));
-    rerender(base(people, { onShowSuspects }));
+    expect(ck('s1')).toHaveAttribute('aria-checked', 'false');
+    rerender(base(people.filter((x) => x.key !== 's1')));
+    rerender(base(people));
     expect(ck('s1')).toHaveAttribute('aria-checked', 'true');
   });
 });
