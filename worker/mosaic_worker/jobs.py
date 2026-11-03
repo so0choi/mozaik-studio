@@ -7,7 +7,7 @@ from typing import Callable
 import cv2
 
 from .detect import FaceDetector
-from .link import link_fragments
+from .link import link_fragments, trim_holds_at_cuts
 from .normalize import Meta, find_original, normalize
 from .review import build_review
 from .status import MSG_ANALYZE_FAILED, UserFacingError, atomic_write_json
@@ -56,6 +56,8 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
         cap.release()
     scene.finish()
     tracks, groups = link_fragments(tracker.finish(), meta.fps, scene.cuts)
+    # a held box keeps a lost face masked; after a cut the shot changed, so the old box would cover the new scene
+    tracks = trim_holds_at_cuts(tracks, scene.cuts)
     # Only a hint for the reviewer: suspect tracks stay masked like every other track.
     part_suspects = {p for parts in groups.values() for p in parts if not verifier.keep(p)}
     suspects = linked_suspects(groups, part_suspects)

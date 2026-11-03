@@ -155,3 +155,51 @@ def test_linked_suspects():
     assert linked_suspects(groups, {"t1", "t2"}) == {"t1"}
     assert linked_suspects(groups, {"t2"}) == set()
     assert linked_suspects(groups, {"t3"}) == {"t3"}
+
+
+# --- trim_holds_at_cuts ---
+from mosaic_worker.link import trim_holds_at_cuts  # noqa: E402
+from mosaic_worker.review import build_review  # noqa: E402
+
+
+def test_trim_removes_held_after_cut_keeps_before_and_real():
+    t = mk("t1", range(0, 10), held=range(10, 20))
+    out = trim_holds_at_cuts([t], {15})
+    assert sorted(out[0].frames) == list(range(0, 15))
+    assert out[0].held == set(range(10, 15))
+    assert out[0].scores == t.scores and out[0].id == "t1"
+
+
+def test_trim_no_cuts_unchanged():
+    t = mk("t1", range(0, 10), held=range(10, 15))
+    out = trim_holds_at_cuts([t], frozenset())
+    assert out[0].frames == t.frames and out[0].held == t.held
+
+
+def test_trim_cut_at_first_held_frame_removes_whole_run():
+    t = mk("t1", range(0, 10), held=range(10, 16))
+    out = trim_holds_at_cuts([t], {10})
+    assert sorted(out[0].frames) == list(range(0, 10))
+    assert out[0].held == set()
+
+
+def test_trim_mid_track_gap_cut_inside_keeps_later_real():
+    t = mk("t1", list(range(0, 10)) + list(range(20, 25)), held=range(10, 20))
+    out = trim_holds_at_cuts([t], {14})
+    assert sorted(out[0].frames) == list(range(0, 14)) + list(range(20, 25))
+    assert out[0].held == {10, 11, 12, 13}
+    assert set(range(20, 25)) <= set(out[0].scores)
+
+
+def test_trim_preserves_order_and_ids():
+    a, b = mk("t2", range(0, 5), held=[5, 6]), mk("t1", range(0, 5), held=[5, 6])
+    out = trim_holds_at_cuts([a, b], {6})
+    assert [t.id for t in out] == ["t2", "t1"] and out[0].held == {5}
+
+
+def test_review_no_gap_item_for_trimmed_trailing_hold():
+    t = mk("t1", range(0, 10), held=range(10, 22))
+    kw = dict(fps=FPS, frame_size=(1000, 1000), frame_count=1000)
+    gaps = lambda r: [i for i in r["items"] if i["type"] == "gap"]
+    assert gaps(build_review([t], **kw))  # sanity: the untrimmed hold is reported
+    assert not gaps(build_review(trim_holds_at_cuts([t], {10}), **kw))

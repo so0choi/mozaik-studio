@@ -6,6 +6,8 @@ are kept; chains are followed into one track.
 """
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
+
 from .review import CUT_SLACK
 from .tracker import EXPAND_RATIO, Box, Track
 
@@ -93,3 +95,29 @@ def link_fragments(tracks: list[Track], fps: int, cuts=frozenset()) -> tuple[lis
         groups[t.id] = parts
     out.sort(key=lambda t: int(t.id[1:]))
     return out, {t.id: groups[t.id] for t in out}
+
+
+def trim_holds_at_cuts(tracks: list[Track], cuts) -> list[Track]:
+    """Drop held frames that lie after a scene cut following the track's last real detection."""
+    if not cuts:
+        return tracks
+    cut_list = sorted(cuts)
+    out: list[Track] = []
+    for t in tracks:
+        reals = sorted(t.scores)
+        drop: set[int] = set()
+        for f in t.frames:
+            if f in t.scores:
+                continue
+            i = bisect_left(reals, f)  # reals[i - 1] = last real detection before f
+            if i == 0:
+                continue
+            c = bisect_right(cut_list, reals[i - 1])  # first cut after that detection
+            if c < len(cut_list) and cut_list[c] <= f:
+                drop.add(f)
+        if not drop:
+            out.append(t)
+            continue
+        frames = {f: b for f, b in t.frames.items() if f not in drop}
+        out.append(Track(t.id, frames, dict(t.scores), {f for f in frames if f not in t.scores}))
+    return out
