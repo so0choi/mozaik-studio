@@ -37,7 +37,7 @@ import { ManualBoxCard, manualRange } from '../studio/ManualBoxCard';
 import { LeftPanel } from '../studio/LeftPanel';
 import { PlayerControls } from '../studio/PlayerControls';
 import { TargetDetail } from '../studio/TargetDetail';
-import { TargetList } from '../studio/TargetList';
+import { TargetList, type RevealKey } from '../studio/TargetList';
 import { VideoInfo } from '../studio/VideoInfo';
 import { PlayerOverlay, type Highlight } from '../studio/PlayerOverlay';
 import { requiredItems } from '../lib/reviewRequired';
@@ -93,6 +93,7 @@ export function Studio() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [pickedId, setPickedId] = useState<string | null>(null);
+  const [reveal, setReveal] = useState<RevealKey | null>(null);
   const [unmaskMsg, setUnmaskMsg] = useState('');
   const unmaskTimer = useRef<ReturnType<typeof setTimeout>>();
   const [renderPhase, setRenderPhase] = useState<'idle' | 'rendering'>('idle');
@@ -376,7 +377,14 @@ export function Studio() {
     const v = videoRef.current;
     if (v && !v.paused) v.pause();
     const person = peopleList.find((p) => p.trackIds.includes(rid));
-    if (person) setCurrentKey(person.key);
+    if (person) {
+      setManualOpen(null);
+      setCurrentKey(person.key);
+      setReveal((r) => ({ key: person.key, kind: 'person', nonce: (r?.nonce ?? 0) + 1 }));
+    } else if (editsRef.current.manual.some((m) => m.id === rid && !m.deleted)) {
+      setManualOpen(rid);
+      setReveal((r) => ({ key: rid, kind: 'manual', nonce: (r?.nonce ?? 0) + 1 }));
+    }
   };
   const unmaskRegion = (rid: string) => {
     if (pieceById.has(rid)) updateEdits((e) => unmaskPiece(tracks!, e, rid));
@@ -1273,6 +1281,7 @@ export function Studio() {
             manualState={manualState}
             manualOpen={manualOpen}
             onOpenManual={openManual}
+            revealKey={reveal}
           />
           {manualOpenEdit ? (
             <ManualBoxCard

@@ -1191,6 +1191,72 @@ describe('Studio mask picker', () => {
   });
 });
 
+describe('Studio canvas selection reveals the list row', () => {
+  const stubSize = () => {
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const orig = [Object.getOwnPropertyDescriptor(proto, 'clientWidth'), Object.getOwnPropertyDescriptor(proto, 'clientHeight')];
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 640 });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 360 });
+    return () => {
+      if (orig[0]) Object.defineProperty(proto, 'clientWidth', orig[0]);
+      else delete proto.clientWidth;
+      if (orig[1]) Object.defineProperty(proto, 'clientHeight', orig[1]);
+      else delete proto.clientHeight;
+    };
+  };
+  const layerOf = async () => {
+    fireEvent(window, new Event('resize'));
+    const layer = await screen.findByTestId('maskpicker');
+    layer.getBoundingClientRect = () => ({ left: 0, top: 0, right: 640, bottom: 360, width: 640, height: 360, x: 0, y: 0, toJSON: () => ({}) });
+    return layer;
+  };
+  const scroll = vi.fn();
+  const origScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = origScroll;
+  });
+
+  it('clicking a masked region marks its row current, scrolls it, and shows its detail card', async () => {
+    scroll.mockReset();
+    Element.prototype.scrollIntoView = function (this: Element, arg?: unknown) {
+      scroll(this, arg);
+    } as never;
+    setup();
+    await card('t1');
+    const restore = stubSize();
+    try {
+      const layer = await layerOf();
+      fireEvent.click(layer, { clientX: 120, clientY: 120 });
+      await waitFor(() => expect(screen.getByTestId('card-t1')).toHaveClass('current'));
+      expect(scroll).toHaveBeenCalledWith(screen.getByTestId('card-t1'), { block: 'nearest' });
+      expect(within(screen.getByTestId('card-t1')).getByRole('checkbox')).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByRole('button', { name: /로 이동/ })).toBeInTheDocument(); // TargetDetail is open
+    } finally {
+      restore();
+    }
+  });
+
+  it('clicking a drawn region opens its card and scrolls its row', async () => {
+    scroll.mockReset();
+    Element.prototype.scrollIntoView = function (this: Element, arg?: unknown) {
+      scroll(this, arg);
+    } as never;
+    setup({
+      edits: { ...emptyEdits, manual: [{ id: 'm1', anchors: [{ frame: 0, box: [400, 250, 60, 60] }], trim: null, deleted: false }] },
+    });
+    await card('t1');
+    const restore = stubSize();
+    try {
+      const layer = await layerOf();
+      fireEvent.click(layer, { clientX: 420, clientY: 270 });
+      expect(await screen.findByTestId('manual-card-m1')).toBeInTheDocument();
+      expect(scroll).toHaveBeenCalledWith(screen.getByTestId('mrow-m1'), { block: 'nearest' });
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('Studio re-analyze', () => {
   it('opens a confirmation dialog; 취소 does nothing', async () => {
     const calls = setup();

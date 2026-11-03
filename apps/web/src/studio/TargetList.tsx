@@ -21,6 +21,14 @@ interface Props {
   manualState: Record<string, ManualState>;
   manualOpen: string | null;
   onOpenManual: (id: string) => void;
+  /** set only when the selection came from the video canvas; a new nonce re-triggers reveal + scroll */
+  revealKey?: RevealKey | null;
+}
+
+export interface RevealKey {
+  key: string;
+  kind: 'person' | 'manual';
+  nonce: number;
 }
 
 type Filter = 'all' | 'hidden' | 'shown';
@@ -170,6 +178,8 @@ function TargetListInner(p: Props) {
   const [autoOpen, setAutoOpen] = useState(true);
   const [manualGroupOpen, setManualGroupOpen] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
+  const rootRef = useRef<HTMLElement>(null);
+  const pending = useRef<RevealKey | null>(null);
 
   const main = p.people.filter((x) => !x.suspect);
   const suspects = p.people.filter((x) => x.suspect);
@@ -181,6 +191,35 @@ function TargetListInner(p: Props) {
   const mainShown = main.filter(match);
   const suspectShown = suspects.filter(match);
   const count = p.people.length;
+
+  // canvas selection: make the row renderable (reset filter/search, open its group), then scroll after render
+  const reveal = p.revealKey;
+  useEffect(() => {
+    if (!reveal) return;
+    if (reveal.kind === 'manual') {
+      setManualGroupOpen(true);
+    } else {
+      const person = p.people.find((x) => x.key === reveal.key);
+      if (!person) return;
+      if (person.suspect) setSuspectOpen(true);
+      else setAutoOpen(true);
+      if (!match(person)) {
+        setFilter('all');
+        setQuery('');
+      }
+    }
+    pending.current = reveal;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal]);
+  useEffect(() => {
+    const r = pending.current;
+    if (!r) return;
+    const id = r.kind === 'manual' ? `mrow-${r.key}` : `card-${r.key}`;
+    const el = rootRef.current?.querySelector(`[data-testid="${id}"]`);
+    if (!el) return;
+    pending.current = null;
+    el.scrollIntoView?.({ block: 'nearest' });
+  });
 
   const showSuspects = () => {
     if (
@@ -222,7 +261,7 @@ function TargetListInner(p: Props) {
   );
 
   return (
-    <section className="tlist" aria-labelledby="tl-title">
+    <section ref={rootRef} className="tlist" aria-labelledby="tl-title">
       <div className="thead">
         <h2 id="tl-title">
           블러 대상 <em>{count}</em>
@@ -320,7 +359,7 @@ function TargetListInner(p: Props) {
             {manualGroupOpen && (
               <ul id="manual-body" className="tg-body mrows">
                 {p.manualList.map((m) => (
-                  <li key={m.id}>
+                  <li key={m.id} data-testid={`mrow-${m.id}`}>
                     <button
                       type="button"
                       className={`mrow${p.manualOpen === m.id ? ' on' : ''}`}
