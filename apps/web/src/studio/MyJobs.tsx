@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import type { Job } from '../lib/types';
 
+export const REANALYZE_BODY =
+  '최신 검출 기준으로 처음부터 다시 분석합니다. 사람별 보임·묶기·나누기와 검수 기록, 사람별 효과가 초기화됩니다. 직접 그린 영역과 기본·배경 효과는 유지됩니다.';
+
 const STALE_QUEUE_MS = 5 * 60 * 1000;
 
 export function jobStatus(j: Job, now = Date.now()): { text: string; tone: 'ok' | 'bad' | '' } {
@@ -78,6 +81,16 @@ export function MyJobs() {
     }
   };
 
+  const reanalyze = async (j: Job) => {
+    if (!window.confirm(`${j.filename} ${REANALYZE_BODY}`)) return;
+    try {
+      await api.reanalyze(j.id);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '다시 분석을 요청하지 못했습니다.');
+    }
+  };
+
   return (
     <div className="myjobs" ref={box} data-testid="my-jobs">
       <button type="button" className="link-btn" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
@@ -103,6 +116,11 @@ export function MyJobs() {
                   </span>
                   <span className={`st ${st.tone}`}>{st.text}</span>
                   <span className="when">{fmtDate(j.createdAt)}</span>
+                  {j.state === 'failed' && (
+                    <button type="button" className="redo" onClick={() => void reanalyze(j)} aria-label={`${j.filename} 다시 분석`}>
+                      다시 분석
+                    </button>
+                  )}
                   <button type="button" className="del" onClick={() => void remove(j)} aria-label={`${j.filename} 삭제`}>
                     삭제
                   </button>

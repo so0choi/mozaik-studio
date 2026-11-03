@@ -83,6 +83,14 @@ export class JobsController {
     return { ok: true };
   }
 
+  @Post(':id/reanalyze')
+  @HttpCode(202)
+  async reanalyze(@Req() req: any, @Param('id') id: string) {
+    this.jobs.getOwned(id, req.user.username);
+    await this.jobs.requestReanalyze(id, req.user.username);
+    return { ok: true };
+  }
+
   @Get(':id/output')
   async output(@Req() req: any, @Res() res: any, @Param('id') id: string) {
     const row = this.jobs.getOwned(id, req.user.username);

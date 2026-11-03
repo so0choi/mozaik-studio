@@ -1190,3 +1190,69 @@ describe('Studio mask picker', () => {
     }
   });
 });
+
+describe('Studio re-analyze', () => {
+  it('opens a confirmation dialog; 취소 does nothing', async () => {
+    const calls = setup();
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: '다시 분석' }));
+    const dlg = screen.getByRole('dialog');
+    expect(within(dlg).getByText('다시 분석할까요')).toBeInTheDocument();
+    expect(within(dlg).getByText(/최신 검출 기준으로 처음부터 다시 분석합니다/)).toBeInTheDocument();
+    await userEvent.click(within(dlg).getByRole('button', { name: '취소' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(calls.some((c) => c.path.endsWith('/reanalyze'))).toBe(false);
+    expect(screen.getByTestId('card-t1')).toBeInTheDocument();
+  });
+
+  it('confirm flushes pending edits, then reanalyzes and shows the waiting shell, then reloads', async () => {
+    let requested = false;
+    let polls = 0;
+    const calls = setup({
+      extra: (c) => {
+        if (c.path === '/api/jobs/j1/reanalyze') {
+          requested = true;
+          return { status: 202, body: { ok: true } };
+        }
+        if (c.path === '/api/jobs/j1' && c.method === 'GET' && requested) {
+          polls++;
+          return { body: job(polls < 2 ? { state: 'analyzing', progress: 40 } : {}) };
+        }
+        return undefined;
+      },
+    });
+    await toggle('t1', '인물 1');
+    await userEvent.click(screen.getByRole('button', { name: '다시 분석' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '다시 분석' }));
+    expect(await screen.findByText(/얼굴 찾는 중|대기 중/)).toBeInTheDocument();
+    expect(screen.queryByTestId('card-t1')).toBeNull();
+    const order = calls.filter((c) => (c.method === 'PUT' && c.path.endsWith('/edits')) || c.path.endsWith('/reanalyze'));
+    expect(order.map((c) => c.method + ' ' + c.path)).toEqual(['PUT /api/jobs/j1/edits', 'POST /api/jobs/j1/reanalyze']);
+    expect(await screen.findByTestId('card-t1', {}, { timeout: 6000 })).toBeInTheDocument();
+    expect(calls.filter((c) => c.path === '/api/jobs/j1/tracks').length).toBe(2);
+  }, 10000);
+
+  it('does not reanalyze when saving edits fails', async () => {
+    const calls = setup({
+      extra: (c) => (c.path === '/api/jobs/j1/edits' && c.method === 'PUT' ? { status: 400, body: { message: '저장 오류' } } : undefined),
+    });
+    await toggle('t1', '인물 1');
+    await userEvent.click(screen.getByRole('button', { name: '다시 분석' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '다시 분석' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('저장하지 못해');
+    expect(calls.some((c) => c.path.endsWith('/reanalyze'))).toBe(false);
+    expect(screen.getByTestId('card-t1')).toBeInTheDocument();
+  });
+
+  it('shows the 409 message and keeps the studio', async () => {
+    setup({
+      extra: (c) =>
+        c.path === '/api/jobs/j1/reanalyze' ? { status: 409, body: { message: '분석이나 렌더가 진행 중입니다.' } } : undefined,
+    });
+    await card('t1');
+    await userEvent.click(screen.getByRole('button', { name: '다시 분석' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '다시 분석' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('분석이나 렌더가 진행 중입니다.');
+    expect(screen.getByTestId('card-t1')).toBeInTheDocument();
+  });
+});

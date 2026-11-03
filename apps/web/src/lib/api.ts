@@ -71,6 +71,7 @@ export const api = {
     request<unknown>(`/api/jobs/${id}/manual`, json('POST', body)),
   getManual: (id: string, mid: string) => request<ManualResponse>(`/api/jobs/${id}/manual/${mid}`),
 
+  reanalyze: (id: string) => request<unknown>(`/api/jobs/${id}/reanalyze`, { method: 'POST' }),
   render: (id: string) => request<unknown>(`/api/jobs/${id}/render`, { method: 'POST' }),
 };
 

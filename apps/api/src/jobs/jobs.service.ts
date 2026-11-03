@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import Redis from 'ioredis';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -45,6 +45,7 @@ const RENDER_REQUEST_TTL_S = 6 * 60 * 60;
 @Injectable()
 export class JobsService {
   readonly storage: Storage;
+  private readonly log = new Logger('Jobs');
   private readonly queue: Queue;
   /** Serialises check-and-set of the render request key within this process. */
   private readonly renderLocks = new Set<string>();
@@ -220,6 +221,46 @@ export class JobsService {
         await this.redis.del(renderRequestedKey(id));
         throw e;
       }
+    } finally {
+      this.renderLocks.delete(id);
+    }
+  }
+
+  /** Re-runs detection from the original upload; resets derived data and per-person edits. */
+  async requestReanalyze(id: string, username: string) {
+    if (this.renderLocks.has(id)) throw new ConflictException('분석이나 렌더가 진행 중입니다.');
+    this.renderLocks.add(id);
+    try {
+      const status = await this.status(id);
+      if (['queued', 'normalizing', 'analyzing', 'rendering'].includes(status.state) || (await this.renderPending(id, status))) {
+        throw new ConflictException('분석이나 렌더가 진행 중입니다.');
+      }
+      const editsPath = this.storage.file(id, 'edits.json');
+      const edits = this.storage.readJson<any>(editsPath);
+      if (edits && typeof edits === 'object') {
+        const eff = edits.effects && typeof edits.effects === 'object' ? edits.effects : undefined;
+        const next: any = { ...edits, visible: [], groups: [], splits: [], reviewed: [] };
+        if (eff) {
+          // drawn regions survive re-analysis, so their effect overrides do too; track/person ids change
+          const manualIds = new Set((Array.isArray(edits.manual) ? edits.manual : []).map((m: any) => m?.id));
+          const kept = Object.entries(eff.overrides ?? {}).filter(([k]) => manualIds.has(k));
+          next.effects = { ...eff, overrides: Object.fromEntries(kept) };
+        }
+        this.storage.writeJsonAtomic(editsPath, next);
+      }
+      for (const f of ['tracks.json', 'review.json', 'output.mp4', 'output.edits.json', 'find_person.json', 'find_dismissed.json']) {
+        fs.rmSync(this.storage.file(id, f), { force: true });
+      }
+      fs.rmSync(this.storage.file(id, 'thumbs'), { recursive: true, force: true });
+      const now = new Date().toISOString();
+      const statusJson = this.storage.file(id, 'status.json');
+      if (fs.existsSync(statusJson)) {
+        this.storage.writeJsonAtomic(statusJson, { state: 'queued', progress: 0, error: '', updatedAt: now });
+      }
+      await this.redis.hset(statusKey(id), { state: 'queued', progress: '0', error: '', updatedAt: now });
+      await this.redis.del(renderRequestedKey(id));
+      await this.queue.push(QUEUE_ANALYZE, { jobId: id });
+      this.log.log(`reanalyze requested job=${id} user=${username}`);
     } finally {
       this.renderLocks.delete(id);
     }

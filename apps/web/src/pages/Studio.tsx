@@ -46,6 +46,7 @@ import { ReviewCard, ReviewUpcoming, optionCount, type ReviewStage } from '../st
 import { Timeline } from '../studio/Timeline';
 import { EmptyShell } from '../studio/EmptyShell';
 import { Header } from './Header';
+import { REANALYZE_BODY } from '../studio/MyJobs';
 
 const SAVE_DEBOUNCE_MS = 500;
 const EDITABLE = ['ready', 'rendering', 'rendered'];
@@ -99,6 +100,10 @@ export function Studio() {
   const [renderError, setRenderError] = useState<string | null>(null);
   const [outputReady, setOutputReady] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [confirmReanalyze, setConfirmReanalyze] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  // bumped after a re-analysis so job polling restarts and the load effect runs again
+  const [pollKey, setPollKey] = useState(0);
 
   // ---- edits: source of truth is the ref, saved with a 500ms debounce ----
   const editsRef = useRef<Edits>(edits);
@@ -213,7 +218,7 @@ export function Studio() {
       stop = true;
       clearTimeout(t);
     };
-  }, [id, fail]);
+  }, [id, fail, pollKey]);
 
   // ---- load tracks / review / edits / manual docs once the job is editable ----
   const loaded = useRef(false);
@@ -757,6 +762,48 @@ export function Studio() {
   }, [trackingKey, id, updateEdits]);
 
   // ---- render ----
+  const doReanalyze = async () => {
+    setConfirmReanalyze(false);
+    setRenderError(null);
+    setReanalyzing(true);
+    try {
+      if (!(await flush())) {
+        setRenderError('저장하지 못해 다시 분석을 시작하지 않았습니다.');
+        return;
+      }
+      await api.reanalyze(id);
+      // drop everything loaded from the old analysis; the waiting shell shows until polling reports ready
+      editsRef.current = emptyEdits();
+      historyRef.current = emptyHistory();
+      setHistoryVersion((v) => v + 1);
+      setEdits(editsRef.current);
+      setTracks(null);
+      setReviewItems([]);
+      setManualDocs({});
+      setManualState({});
+      setReviewManual({});
+      setFrame(0);
+      setCurrentKey(null);
+      setSelected(new Set());
+      setActiveId(null);
+      setBoxMode(null);
+      setStageState({ id: null, stage: 'ask' });
+      setManualOpen(null);
+      setPickedId(null);
+      setRenderPhase('idle');
+      setOutputReady(false);
+      setNotice('');
+      setSaveError(null);
+      setJob((j) => (j ? { ...j, state: 'queued', progress: 0, error: null, hasOutput: false, outputStale: false } : j));
+      loaded.current = false;
+      setPollKey((k) => k + 1);
+    } catch (e) {
+      setRenderError(e instanceof ApiError ? e.message : '다시 분석을 시작하지 못했습니다.');
+    } finally {
+      setReanalyzing(false);
+    }
+  };
+
   const startRender = async () => {
     setRenderError(null);
     setSavingForRender(true);
@@ -986,6 +1033,14 @@ export function Studio() {
               다운로드
             </a>
           )}
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={renderPhase === 'rendering' || savingForRender || reanalyzing}
+            onClick={() => setConfirmReanalyze(true)}
+          >
+            다시 분석
+          </button>
           <button type="button" className="btn-primary" disabled={!canRender} onClick={() => void startRender()}>
             {savingForRender ? (
               <>
@@ -1264,6 +1319,22 @@ export function Studio() {
       <div className="sr" aria-live="polite">
         {notice || noteText}
       </div>
+      {confirmReanalyze && (
+        <div className="dlg-scrim">
+          <div className="dlg" role="dialog" aria-modal="true" aria-labelledby="reanalyze-title" aria-describedby="reanalyze-body">
+            <h2 id="reanalyze-title">다시 분석할까요</h2>
+            <p id="reanalyze-body">{REANALYZE_BODY}</p>
+            <div className="dlg-actions">
+              <button type="button" className="btn-secondary" onClick={() => setConfirmReanalyze(false)}>
+                취소
+              </button>
+              <button type="button" className="btn-primary" autoFocus onClick={() => void doReanalyze()}>
+                다시 분석
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
