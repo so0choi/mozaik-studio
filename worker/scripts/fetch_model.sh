@@ -7,8 +7,19 @@ URL="https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/f
 mkdir -p "$DIR"
 if [ -s "$FILE" ]; then
   echo "model already present: $FILE"
-  exit 0
+else
+  curl -fL --retry 3 -o "$FILE.tmp" "$URL"
+  mv "$FILE.tmp" "$FILE"
+  echo "downloaded: $FILE"
 fi
-curl -fL --retry 3 -o "$FILE.tmp" "$URL"
-mv "$FILE.tmp" "$FILE"
-echo "downloaded: $FILE"
+
+# NanoDet person detector (person gate, mosaic_worker/person.py)
+PFILE="$DIR/object_detection_nanodet_2022nov.onnx"
+PURL="https://github.com/opencv/opencv_zoo/raw/main/models/object_detection_nanodet/object_detection_nanodet_2022nov.onnx"
+if [ -s "$PFILE" ]; then
+  echo "model already present: $PFILE"
+else
+  curl -fL --retry 3 -o "$PFILE.tmp" "$PURL"
+  mv "$PFILE.tmp" "$PFILE"
+  echo "downloaded: $PFILE"
+fi

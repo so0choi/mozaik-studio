@@ -266,3 +266,28 @@ def test_same_severity_gaps_within_one_second_still_merge():
     refound_elsewhere(t)
     gaps = [i for i in build_review([t], 30)["items"] if i["type"] == "gap"]
     assert len(gaps) == 1 and gaps[0]["severity"] == "required"
+
+
+def test_likely_faces_none_keeps_everything():
+    t = refound_elsewhere(mk("t1", range(0, 30), held=range(10, 15)))
+    assert len(build_review([t], 30, likely_faces=None)["items"]) == 1
+
+
+def test_likely_faces_demotes_non_likely_to_advisory():
+    likely = refound_elsewhere(mk("t1", range(0, 30), held=range(10, 15)))
+    other = refound_elsewhere(mk("t2", range(0, 30), held=range(10, 15), box=(300, 200, 50, 50)))
+    items = build_review([likely, other], 30, likely_faces={"t1"})["items"]
+    assert {tuple(i["trackIds"]): i["severity"] for i in items} == {("t1",): "required", ("t2",): "advisory"}
+    # an item that is advisory anyway (too few detections) stays advisory for a likely face
+    short = refound_elsewhere(mk("t3", range(0, 4), held=range(1, 3)))
+    assert [i["severity"] for i in build_review([short], 30, likely_faces={"t3"})["items"]] == ["advisory"]
+
+
+def test_likely_faces_crossing_needs_both_tracks():
+    a = mk("t1", range(0, 20), box=(100, 100, 100, 100))
+    b = mk("t2", range(0, 20), box=(170, 100, 100, 100))
+    sev = lambda lf: [i.get("severity", "required") for i in build_review([a, b], 30, likely_faces=lf)["items"]]
+    both = sev({"t1", "t2"})
+    assert both == ["required"]
+    assert sev({"t1"}) == ["advisory"]
+    assert sev(set()) == ["advisory"]

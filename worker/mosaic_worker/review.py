@@ -97,8 +97,13 @@ def _inside(inner, outer) -> bool:
     )
 
 
-def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: int | None = None, cuts=frozenset(), suspects=frozenset()) -> dict:
-    """Without frame_size/frame_count/cuts every held run is reported (old behaviour)."""
+def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: int | None = None, cuts=frozenset(), suspects=frozenset(), likely_faces: set[str] | None = None) -> dict:
+    """Without frame_size/frame_count/cuts every held run is reported (old behaviour).
+
+    With `likely_faces`, nothing is dropped: an item whose tracks are not all in that set is demoted to
+    severity "advisory" (collapsed reference section in the UI, never blocks render). Items for likely
+    faces keep their computed severity.
+    """
     raw: list[dict] = []  # {type, trackIds, start, end, box, severity?}
 
     def add(kind, ids, a, b, boxes_at, severity=None):
@@ -166,6 +171,10 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
         else:
             merged.append(dict(r))
     merged.sort(key=lambda r: (r["start"], r["type"], r["trackIds"]))
+    if likely_faces is not None:
+        for r in merged:
+            if not all(t in likely_faces for t in r["trackIds"]):
+                r["severity"] = "advisory"
     items = []
     for i, r in enumerate(merged, 1):
         item = {
