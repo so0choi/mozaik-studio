@@ -440,11 +440,12 @@ export function Studio() {
     },
     [pieceById, edits, effects],
   );
-  const showSuspects = useCallback(() => {
+  const showSuspects = useCallback((keys: string[]) => {
     if (!tracks) return;
+    const only = new Set(keys);
     updateEdits((e) =>
       buildPeople(tracks, e)
-        .filter((p) => p.suspect && !p.visible)
+        .filter((p) => p.suspect && !p.visible && only.has(p.key))
         .reduce((acc, p) => setPersonVisible(acc, p, true), e),
     );
   }, [tracks, updateEdits]);

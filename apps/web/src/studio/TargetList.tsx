@@ -16,7 +16,7 @@ interface Props {
   onMerge: () => void;
   onCancelSelect: () => void;
   onRename: (key: string, label: string) => void;
-  onShowSuspects: () => void;
+  onShowSuspects: (keys: string[]) => void;
   manualList: ManualEdit[];
   manualState: Record<string, ManualState>;
   manualOpen: string | null;
@@ -171,6 +171,49 @@ function Row(p: RowProps) {
   );
 }
 
+interface TileProps {
+  person: Person;
+  current: boolean;
+  excluded: boolean;
+  thumbSrc: (path: string) => string;
+  onFocusPerson: (key: string) => void;
+  onToggleExclude: (key: string) => void;
+}
+
+function SuspectTile(p: TileProps) {
+  const { person } = p;
+  const masked = !person.visible;
+  const checked = masked && !p.excluded;
+  const cls = ['stile', masked ? '' : 'shown', p.current ? 'current' : ''].filter(Boolean).join(' ');
+  return (
+    <li className={cls} data-testid={`card-${person.key}`} onClick={() => p.onFocusPerson(person.key)}>
+      <div className="st-img">
+        <img src={p.thumbSrc(person.thumb)} alt="" />
+        {masked && (
+          <button
+            type="button"
+            className="pl-ck st-ck"
+            role="checkbox"
+            aria-checked={checked}
+            aria-label={`${person.label} 가림 해제 대상`}
+            onClick={(e) => {
+              e.stopPropagation();
+              p.onToggleExclude(person.key);
+            }}
+          >
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 7.5l3 3 6-7" />
+            </svg>
+          </button>
+        )}
+        <span className={`st-chip${masked ? '' : ' v'}`}>{masked ? '가림' : '원본'}</span>
+      </div>
+      <span className="st-label">{person.label}</span>
+      <span className="st-sub">{formatDuration(person.appearSec)}</span>
+    </li>
+  );
+}
+
 function TargetListInner(p: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -178,12 +221,13 @@ function TargetListInner(p: Props) {
   const [autoOpen, setAutoOpen] = useState(true);
   const [manualGroupOpen, setManualGroupOpen] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
+  // suspect tiles the user un-checked (= keep masked); default is everything checked
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const rootRef = useRef<HTMLElement>(null);
   const pending = useRef<RevealKey | null>(null);
 
   const main = p.people.filter((x) => !x.suspect);
   const suspects = p.people.filter((x) => x.suspect);
-  const hiddenSuspects = suspects.filter((x) => !x.visible).length;
   const q = query.trim().toLowerCase();
   const match = (x: Person) =>
     (!q || x.label.toLowerCase().includes(q)) &&
@@ -191,6 +235,23 @@ function TargetListInner(p: Props) {
   const mainShown = main.filter(match);
   const suspectShown = suspects.filter(match);
   const count = p.people.length;
+  const unmaskKeys = suspectShown.filter((x) => !x.visible && !excluded.has(x.key)).map((x) => x.key);
+
+  // drop excluded keys that no longer exist (e.g. after a merge)
+  useEffect(() => {
+    setExcluded((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(p.people.map((x) => x.key));
+      const next = new Set([...prev].filter((k) => live.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [p.people]);
+  const toggleExclude = (key: string) =>
+    setExcluded((prev) => {
+      const n = new Set(prev);
+      if (!n.delete(key)) n.add(key);
+      return n;
+    });
 
   // canvas selection: make the row renderable (reset filter/search, open its group), then scroll after render
   const reveal = p.revealKey;
@@ -222,22 +283,22 @@ function TargetListInner(p: Props) {
   });
 
   const showSuspects = () => {
+    const keys = unmaskKeys;
     if (
-      window.confirm(
-        `얼굴 아닐 수 있음으로 표시된 ${hiddenSuspects}개를 모두 보이게 합니다. 썸네일을 확인하셨나요?`,
-      )
+      keys.length > 0 &&
+      window.confirm(`얼굴 아닐 수 있음 ${keys.length}개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.`)
     )
-      p.onShowSuspects();
+      p.onShowSuspects(keys);
   };
 
-  const row = (person: Person, suspectBadge: boolean) => (
+  const row = (person: Person) => (
     <Row
       key={person.key}
       person={person}
       selected={p.selected.has(person.key)}
       current={p.currentKey === person.key}
       editing={editing === person.key}
-      suspectBadge={suspectBadge}
+      suspectBadge={false}
       thumbSrc={p.thumbSrc}
       onToggleVisible={p.onToggleVisible}
       tag={p.effectOf(person)}
@@ -314,7 +375,7 @@ function TargetListInner(p: Props) {
             {autoOpen && (
               <div id="auto-body" className="tg-body">
                 {main.length > 0 && mainShown.length === 0 && <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>}
-                {mainShown.length > 0 && <ul className="pl-rows">{mainShown.map((x) => row(x, false))}</ul>}
+                {mainShown.length > 0 && <ul className="pl-rows">{mainShown.map((x) => row(x))}</ul>}
               </div>
             )}
           </div>
@@ -328,19 +389,36 @@ function TargetListInner(p: Props) {
                 {' '}
                 <em>{suspects.length}</em>
               </button>
-              {hiddenSuspects > 0 && (
-                <button type="button" className="pl-gact" onClick={showSuspects}>
-                  확인 후 모두 보임
+              {suspectOpen && unmaskKeys.length > 0 && (
+                <button
+                  type="button"
+                  className="pl-gact"
+                  title="현재 목록에 보이는(검색·필터 적용) 체크된 항목만 가림 해제합니다"
+                  onClick={showSuspects}
+                >
+                  선택한 {unmaskKeys.length}개 가림 해제
                 </button>
               )}
             </div>
             {suspectOpen && (
               <div id="suspect-body" className="tg-body">
-                <p className="pl-gnote">음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 가려진 채로 시작합니다.</p>
+                <p className="pl-gnote">음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 진짜 얼굴이면 체크를 풀고, 나머지는 한 번에 가림 해제하세요.</p>
                 {suspectShown.length === 0 ? (
                   <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>
                 ) : (
-                  <ul className="pl-rows">{suspectShown.map((x) => row(x, true))}</ul>
+                  <ul className="stiles">
+                    {suspectShown.map((x) => (
+                      <SuspectTile
+                        key={x.key}
+                        person={x}
+                        current={p.currentKey === x.key}
+                        excluded={excluded.has(x.key)}
+                        thumbSrc={p.thumbSrc}
+                        onFocusPerson={p.onFocusPerson}
+                        onToggleExclude={toggleExclude}
+                      />
+                    ))}
+                  </ul>
                 )}
               </div>
             )}

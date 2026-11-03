@@ -820,7 +820,7 @@ describe('Studio suspect tracks', () => {
   };
   afterEach(() => vi.restoreAllMocks());
 
-  it('keeps suspects in a collapsed group that expands to rows with a badge', async () => {
+  it('keeps suspects in a collapsed group that expands to tiles', async () => {
     setup({ tracks: suspectDoc });
     await card('t2');
     expect(screen.queryByTestId('card-t1')).toBeNull();
@@ -829,35 +829,58 @@ describe('Studio suspect tracks', () => {
     expect(screen.queryByText(/음식, 무늬 등 얼굴이 아닌 것을/)).toBeNull();
     await userEvent.click(toggleBtn);
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText(/음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 가려진 채로 시작합니다./)).toBeInTheDocument();
-    expect(within(await card('t1')).getByText('얼굴 아닐 수 있음')).toBeInTheDocument();
-    expect(within(await card('t3')).getByText('얼굴 아닐 수 있음')).toBeInTheDocument();
-    expect(within(await card('t2')).queryByText('얼굴 아닐 수 있음')).toBeNull();
+    expect(screen.getByText(/음식, 무늬 등 얼굴이 아닌 것을 잘못 찾았을 수 있습니다. 진짜 얼굴이면 체크를 풀고/)).toBeInTheDocument();
+    expect(within(await card('t1')).getByRole('checkbox', { name: /가림 해제 대상/ })).toHaveAttribute('aria-checked', 'true');
+    expect(within(await card('t3')).getByRole('checkbox', { name: /가림 해제 대상/ })).toBeInTheDocument();
+    expect(within(await card('t2')).queryByRole('checkbox', { name: /가림 해제 대상/ })).toBeNull();
   });
 
   it('confirm=true shows all suspects via one debounced PUT', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const calls = setup({ tracks: suspectDoc });
     await card('t2');
-    await userEvent.click(screen.getByRole('button', { name: '확인 후 모두 보임' }));
+    await userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ }));
+    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
     expect(confirm).toHaveBeenCalledWith(
-      '얼굴 아닐 수 있음으로 표시된 2개를 모두 보이게 합니다. 썸네일을 확인하셨나요?',
+      '얼굴 아닐 수 있음 2개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.',
     );
     await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
     await sleep(700);
     expect(puts(calls).length).toBe(1);
     expect([...(puts(calls)[0].body as Edits).visible].sort()).toEqual(['t1', 't3']);
-    expect(screen.queryByRole('button', { name: '확인 후 모두 보임' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '선택한 2개 가림 해제' })).toBeNull();
+  });
+
+  it('unmasks only the checked suspects in one undo step; undo restores them', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const calls = setup({ tracks: suspectDoc });
+    await card('t2');
+    await userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ }));
+    await userEvent.click(within(await card('t3')).getByRole('checkbox', { name: /가림 해제 대상/ }));
+    await userEvent.click(screen.getByRole('button', { name: '선택한 1개 가림 해제' }));
+    await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
+    expect([...(puts(calls)[0].body as Edits).visible].sort()).toEqual(['t1']);
+    expect(within(await card('t1')).queryByRole('checkbox')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    await waitFor(() => expect(within(screen.getByTestId('card-t1')).getByRole('checkbox')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '되돌리기' })).toBeDisabled();
+  });
+
+  it('hides the bulk unmask button while the group is collapsed', async () => {
+    setup({ tracks: suspectDoc });
+    await card('t2');
+    expect(screen.queryByRole('button', { name: /가림 해제$/ })).not.toBeInTheDocument();
   });
 
   it('confirm=false sends nothing', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     const calls = setup({ tracks: suspectDoc });
     await card('t2');
-    await userEvent.click(screen.getByRole('button', { name: '확인 후 모두 보임' }));
+    await userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음 2/ }));
+    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
     await sleep(800);
     expect(puts(calls).length).toBe(0);
-    expect(screen.getByRole('button', { name: '확인 후 모두 보임' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '선택한 2개 가림 해제' })).toBeInTheDocument();
   });
 });
 

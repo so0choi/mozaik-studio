@@ -107,3 +107,95 @@ describe('TargetList reveal', () => {
     expect(scroll).not.toHaveBeenCalled();
   });
 });
+
+describe('TargetList suspect tiles', () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+  const people = [
+    person('a'),
+    person('s1', { suspect: true }),
+    person('s2', { suspect: true }),
+    person('s3', { suspect: true }),
+    person('sv', { suspect: true, visible: true }),
+  ];
+  const open = async () => userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음/ }));
+  const ck = (key: string) => within(screen.getByTestId(`card-${key}`)).getByRole('checkbox');
+
+  it('renders tiles with checked checkboxes; the auto group keeps rows', async () => {
+    render(base(people));
+    await open();
+    for (const k of ['s1', 's2', 's3']) {
+      expect(ck(k)).toHaveAttribute('aria-checked', 'true');
+      expect(ck(k)).toHaveAccessibleName(`인물 ${k} 가림 해제 대상`);
+      expect(within(screen.getByTestId(`card-${k}`)).getByText('가림')).toBeInTheDocument();
+    }
+    expect(within(screen.getByTestId('card-a')).getByRole('switch')).toBeInTheDocument();
+  });
+
+  it('already-visible tile has no checkbox, shows 원본, is not counted', async () => {
+    render(base(people));
+    await open();
+    const tile = screen.getByTestId('card-sv');
+    expect(within(tile).queryByRole('checkbox')).toBeNull();
+    expect(within(tile).getByText('원본')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '선택한 3개 가림 해제' })).toBeInTheDocument();
+  });
+
+  it('unchecking one tile then confirming passes only the others', async () => {
+    const onShowSuspects = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(base(people, { onShowSuspects }));
+    await open();
+    await userEvent.click(ck('s2'));
+    expect(ck('s2')).toHaveAttribute('aria-checked', 'false');
+    await userEvent.click(screen.getByRole('button', { name: '선택한 2개 가림 해제' }));
+    expect(confirm).toHaveBeenCalledWith('얼굴 아닐 수 있음 2개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.');
+    expect(onShowSuspects).toHaveBeenCalledWith(['s1', 's3']);
+  });
+
+  it('cancel calls nothing', async () => {
+    const onShowSuspects = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(base(people, { onShowSuspects }));
+    await open();
+    await userEvent.click(screen.getByRole('button', { name: '선택한 3개 가림 해제' }));
+    expect(onShowSuspects).not.toHaveBeenCalled();
+  });
+
+  it('button is hidden when nothing is selected', async () => {
+    render(base(people));
+    await open();
+    for (const k of ['s1', 's2', 's3']) await userEvent.click(ck(k));
+    expect(screen.queryByRole('button', { name: /가림 해제$/ })).toBeNull();
+  });
+
+  it('clicking the tile focuses; clicking the checkbox does not', async () => {
+    const onFocusPerson = vi.fn();
+    render(base(people, { onFocusPerson }));
+    await open();
+    await userEvent.click(ck('s1'));
+    expect(onFocusPerson).not.toHaveBeenCalled();
+    await userEvent.click(within(screen.getByTestId('card-s1')).getByText('인물 s1'));
+    expect(onFocusPerson).toHaveBeenCalledWith('s1');
+  });
+
+  it('counts only the searched (visible) tiles', async () => {
+    render(base(people));
+    await open();
+    await userEvent.type(screen.getByRole('searchbox', { name: '인물 검색' }), 's1');
+    expect(screen.getByRole('button', { name: '선택한 1개 가림 해제' })).toBeInTheDocument();
+  });
+
+  it('drops excluded keys that no longer exist', async () => {
+    const onShowSuspects = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { rerender } = render(base(people, { onShowSuspects }));
+    await open();
+    await userEvent.click(ck('s1'));
+    rerender(base(people.filter((x) => x.key !== 's1'), { onShowSuspects }));
+    rerender(base(people, { onShowSuspects }));
+    expect(ck('s1')).toHaveAttribute('aria-checked', 'true');
+  });
+});
