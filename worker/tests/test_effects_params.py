@@ -18,6 +18,10 @@ def test_matches_shared_effect_params(case):
         assert got == case["expected"] and isinstance(got, int)
 
 
+def test_blur_factor_old_level_1_is_new_level_5():
+    assert [effects.blur_factor(s) for s in range(1, 6)] == [0.4, 0.55, 0.7, 0.85, 1.0]
+
+
 def test_strength_factor():
     assert [effects.strength_factor(s) for s in range(1, 6)] == [1, 1.5, 2, 2.5, 3]
 

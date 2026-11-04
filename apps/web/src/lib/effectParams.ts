@@ -39,12 +39,17 @@ export function strengthFactor(s: number): number {
   return 1 + 0.5 * (s - 1);
 }
 
+/** Blur only: level 5 is the old level 1 (users found it too strong); lower levels are weaker. */
+export function blurFactor(s: number): number {
+  return (8 + 3 * (s - 1)) / 20; // 0.4, 0.55, 0.7, 0.85, 1.0
+}
+
 export function regionBlock(base: number, s: number): number {
   return Math.round(base * strengthFactor(s));
 }
 
 export function regionSigma(w: number, h: number, s: number): number {
-  return Math.max(Math.min(w, h) / 4, 2) * strengthFactor(s);
+  return Math.max(Math.min(w, h) / 4, 2) * blurFactor(s);
 }
 
 export function backgroundBlock(W: number, H: number, s: number): number {
@@ -52,5 +57,5 @@ export function backgroundBlock(W: number, H: number, s: number): number {
 }
 
 export function backgroundSigma(W: number, H: number, s: number): number {
-  return (Math.min(W, H) / 60) * strengthFactor(s);
+  return (Math.min(W, H) / 60) * blurFactor(s);
 }

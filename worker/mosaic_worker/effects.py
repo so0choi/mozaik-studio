@@ -42,12 +42,17 @@ def strength_factor(s: int) -> float:
     return 1 + 0.5 * (s - 1)
 
 
+def blur_factor(s: int) -> float:
+    """Blur only: level 5 is the old level 1 (users found it too strong); lower levels are weaker."""
+    return (8 + 3 * (s - 1)) / 20  # 0.4, 0.55, 0.7, 0.85, 1.0
+
+
 def region_block(base: int, s: int) -> int:
     return int(base * strength_factor(s) + 0.5)
 
 
 def region_sigma(w: int, h: int, s: int) -> float:
-    return max(min(w, h) / 4, 2) * strength_factor(s)
+    return max(min(w, h) / 4, 2) * blur_factor(s)
 
 
 def background_block(W: int, H: int, s: int) -> int:
@@ -55,7 +60,7 @@ def background_block(W: int, H: int, s: int) -> int:
 
 
 def background_sigma(W: int, H: int, s: int) -> float:
-    return (min(W, H) / 60) * strength_factor(s)
+    return (min(W, H) / 60) * blur_factor(s)
 
 
 def pixelate(frame: np.ndarray, box, block: int) -> None:

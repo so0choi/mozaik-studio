@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drawFrameEffects, maskAlpha, resetFilterSupportCache, supportsCanvasFilter, type PixelSource } from './effects';
-import { regionSigma } from './effectParams';
+import { backgroundSigma, regionSigma } from './effectParams';
 import { shapeBitmap } from './shapes';
 import type { Effect, Region } from './types';
 
@@ -114,7 +114,7 @@ describe('background', () => {
     run([], blur);
     const q = calls.find((c) => c.canvas === 'off' && c.fn === 'drawImage' && c.filter.startsWith('blur'))!;
     expect(q.args.slice(5)).toEqual([0, 0, 160, 90]);
-    expect(q.filter).toBe('blur(1.5px)');
+    expect(q.filter).toBe(`blur(${backgroundSigma(640, 360, 1) / 4}px)`); // 0.6 at level 1
     const under = idx((c) => c.canvas === 'main' && c.fn === 'drawImage');
     const over = calls.findIndex((c, i) => i > under && c.canvas === 'main' && c.fn === 'drawImage');
     expect(over).toBeGreaterThan(under);
@@ -141,7 +141,7 @@ describe('regions', () => {
 
   it('blur samples a margin of ceil(3σ) around the box', () => {
     const r = region({ effect: blur, box: [100, 100, 64, 48] });
-    const sigma = regionSigma(64, 48, 1); // 12
+    const sigma = regionSigma(64, 48, 1); // 4.8
     const m = Math.ceil(3 * sigma);
     run([r]);
     const bl = calls.find((c) => c.canvas === 'off' && c.fn === 'drawImage' && c.filter.startsWith('blur'))!;

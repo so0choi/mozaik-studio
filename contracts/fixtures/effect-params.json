@@ -31,7 +31,7 @@
     80,
     1
    ],
-   "expected": 20.0
+   "expected": 8.0
   },
   {
    "fn": "region_sigma",
@@ -40,7 +40,7 @@
     4,
     1
    ],
-   "expected": 2.0
+   "expected": 0.8
   },
   {
    "fn": "region_sigma",
@@ -49,7 +49,7 @@
     64,
     2
    ],
-   "expected": 15.0
+   "expected": 5.5
   },
   {
    "fn": "background_block",
@@ -76,7 +76,7 @@
     360,
     1
    ],
-   "expected": 6.0
+   "expected": 2.4000000000000004
   },
   {
    "fn": "background_sigma",
@@ -85,7 +85,16 @@
     1080,
     3
    ],
-   "expected": 36.0
+   "expected": 12.6
+  },
+  {
+   "fn": "region_sigma",
+   "args": [
+    80,
+    80,
+    5
+   ],
+   "expected": 20.0
   }
  ]
 }
