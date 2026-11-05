@@ -1278,6 +1278,7 @@ export function Studio() {
             onCancelSelect={clearSelect}
             onRename={rename}
             onShowSuspects={showSuspects}
+            onSeekFrame={seek}
             manualList={manualList}
             manualState={manualState}
             manualOpen={manualOpen}

@@ -833,7 +833,7 @@ describe('Studio suspect tracks', () => {
     expect(screen.queryByText(/음식, 손, 무늬 등/)).toBeNull();
     await userEvent.click(toggleBtn);
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText(/가능성이 높은 것은 미리 체크했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/가능성이 높은 것은 분석이 끝날 때 자동으로 가림 해제했습니다/)).toBeInTheDocument();
     expect(await ckOf('t1')).toHaveAttribute('aria-checked', 'true');
     expect(await ckOf('t3')).toHaveAttribute('aria-checked', 'false');
     expect(within(await card('t1')).getByText('가능성 높음')).toBeInTheDocument();

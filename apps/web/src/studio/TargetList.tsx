@@ -17,6 +17,8 @@ interface Props {
   onCancelSelect: () => void;
   onRename: (key: string, label: string) => void;
   onShowSuspects: (keys: string[]) => void;
+  /** move the player to a frame (used by "may not be a face" tiles) */
+  onSeekFrame?: (frame: number) => void;
   manualList: ManualEdit[];
   manualState: Record<string, ManualState>;
   manualOpen: string | null;
@@ -179,6 +181,7 @@ interface TileProps {
   thumbSrc: (path: string) => string;
   onFocusPerson: (key: string) => void;
   onToggleExclude: (key: string) => void;
+  onSeekFrame?: (frame: number) => void;
 }
 
 function SuspectTile(p: TileProps) {
@@ -187,7 +190,16 @@ function SuspectTile(p: TileProps) {
   const checked = masked && p.checked;
   const cls = ['stile', masked ? '' : 'shown', p.current ? 'current' : ''].filter(Boolean).join(' ');
   return (
-    <li className={cls} data-testid={`card-${person.key}`} onClick={() => p.onFocusPerson(person.key)}>
+    <li
+      className={cls}
+      data-testid={`card-${person.key}`}
+      title="클릭하면 이 위치로 이동"
+      onClick={() => {
+        p.onFocusPerson(person.key);
+        const first = person.segments[0]?.[0];
+        if (first !== undefined) p.onSeekFrame?.(first);
+      }}
+    >
       <div className="st-img">
         <img src={p.thumbSrc(person.thumb)} alt="" />
         {masked && (
@@ -408,7 +420,7 @@ function TargetListInner(p: Props) {
             </div>
             {suspectOpen && (
               <div id="suspect-body" className="tg-body">
-                <p className="pl-gnote">음식, 손, 무늬 등 얼굴이 아닐 수 있는 영역입니다. 가능성이 높은 것은 미리 체크했습니다. 진짜 얼굴이 보이면 체크를 풀고 한 번에 가림 해제하세요.</p>
+                <p className="pl-gnote">음식, 손, 무늬 등 얼굴이 아닐 수 있는 영역입니다. 가능성이 높은 것은 분석이 끝날 때 자동으로 가림 해제했습니다. 진짜 얼굴이면 타일을 누르고 효과를 고르면 다시 가려집니다. 나머지도 얼굴이 아니면 체크해서 한 번에 가림 해제하세요.</p>
                 {suspectShown.length === 0 ? (
                   <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>
                 ) : (
@@ -422,6 +434,7 @@ function TargetListInner(p: Props) {
                         thumbSrc={p.thumbSrc}
                         onFocusPerson={p.onFocusPerson}
                         onToggleExclude={toggleCheck}
+                        onSeekFrame={p.onSeekFrame}
                       />
                     ))}
                   </ul>

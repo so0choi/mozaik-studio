@@ -155,7 +155,7 @@ describe('TargetList suspect tiles', () => {
     render(base(people));
     await open();
     expect(
-      screen.getByText('음식, 손, 무늬 등 얼굴이 아닐 수 있는 영역입니다. 가능성이 높은 것은 미리 체크했습니다. 진짜 얼굴이 보이면 체크를 풀고 한 번에 가림 해제하세요.'),
+      screen.getByText('음식, 손, 무늬 등 얼굴이 아닐 수 있는 영역입니다. 가능성이 높은 것은 분석이 끝날 때 자동으로 가림 해제했습니다. 진짜 얼굴이면 타일을 누르고 효과를 고르면 다시 가려집니다. 나머지도 얼굴이 아니면 체크해서 한 번에 가림 해제하세요.'),
     ).toBeInTheDocument();
   });
 
@@ -178,6 +178,20 @@ describe('TargetList suspect tiles', () => {
     await userEvent.click(screen.getByRole('button', { name: '선택한 3개 가림 해제' }));
     expect(confirm).toHaveBeenCalledWith('얼굴 아닐 수 있음 3개의 가림을 해제합니다. 진짜 얼굴은 체크를 풀어 두세요.');
     expect(onShowSuspects).toHaveBeenCalledWith(['s3', 's1', 's2']);
+  });
+
+  it('clicking a tile seeks to its first frame; the checkbox does not', async () => {
+    const onSeekFrame = vi.fn();
+    const onFocusPerson = vi.fn();
+    const ps = [person('a'), person('s9', { suspect: true, segments: [[120, 150], [300, 310]] })];
+    render(base(ps, { onSeekFrame, onFocusPerson }));
+    await open();
+    await userEvent.click(within(screen.getByTestId('card-s9')).getByText('인물 s9'));
+    expect(onSeekFrame).toHaveBeenCalledWith(120);
+    expect(onFocusPerson).toHaveBeenCalledWith('s9');
+    onSeekFrame.mockClear();
+    await userEvent.click(ck('s9'));
+    expect(onSeekFrame).not.toHaveBeenCalled();
   });
 
   it('unchecking a nonface tile removes it from the confirm list', async () => {
