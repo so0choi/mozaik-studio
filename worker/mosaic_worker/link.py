@@ -18,6 +18,15 @@ LINK_MAX_SIZE_RATIO = 2.0
 LINK_MAX_GAP_SEC = 1 / 6
 
 
+# Bridging (not merging): a partly occluded profile can drop below the detector threshold for ~1 s, so the
+# track's hold (0.5 s) runs out before a new track for the same face starts. Measured: 13 such gaps in a
+# 115 s video, 984 in a 23-min street vlog (median 10 frames). Identities stay separate; we only keep the
+# uncovered frames masked.
+BRIDGE_MAX_SEC = 1.5
+BRIDGE_MAX_DIST_SIDES = 2.0
+BRIDGE_MAX_SIZE_RATIO = 3.0
+
+
 def _centre(box: Box) -> tuple[float, float]:
     return box[0] + box[2] / 2, box[1] + box[3] / 2
 
@@ -120,4 +129,78 @@ def trim_holds_at_cuts(tracks: list[Track], cuts) -> list[Track]:
             continue
         frames = {f: b for f, b in t.frames.items() if f not in drop}
         out.append(Track(t.id, frames, dict(t.scores), {f for f in frames if f not in t.scores}))
+    return out
+
+
+def bridge_gaps(tracks: list[Track], fps: int, cuts=frozenset(), skip=frozenset()) -> list[Track]:
+    """Fill uncovered frames between a track's coverage and a nearby later track's first detection (held frames)."""
+    max_gap = round(BRIDGE_MAX_SEC * fps)
+    firsts = [(min(t.scores), t) for t in tracks if t.scores and t.id not in skip]
+    out: list[Track] = []
+    for a in tracks:
+        if not a.scores or a.id in skip or not a.frames:
+            out.append(a)
+            continue
+        lr, last = max(a.scores), max(a.frames)
+        if lr not in a.frames:
+            out.append(a)
+            continue
+        abox = a.frames[lr]
+        side = max(abox[2], abox[3]) / (1 + EXPAND_RATIO)
+        ac = _centre(abox)
+        best = None
+        for s, b in firsts:
+            if b is a or not (last + 1 < s <= lr + max_gap) or s not in b.frames:
+                continue
+            bbox = b.frames[s]
+            bc = _centre(bbox)
+            dist = ((bc[0] - ac[0]) ** 2 + (bc[1] - ac[1]) ** 2) ** 0.5
+            if dist > BRIDGE_MAX_DIST_SIDES * side:
+                continue
+            if max(bbox[2] / abox[2], abox[2] / bbox[2]) > BRIDGE_MAX_SIZE_RATIO:
+                continue
+            if any(lr - CUT_SLACK < c <= s + CUT_SLACK for c in cuts):
+                continue
+            if best is None or (s, dist) < best[:2]:
+                best = (s, dist, bbox)
+        if best is None:
+            out.append(a)
+            continue
+        s, _, bbox = best
+        w, h = max(abox[2], bbox[2]), max(abox[3], bbox[3])
+        bc = _centre(bbox)
+        frames = dict(a.frames)
+        for f in range(last + 1, s):
+            t = (f - lr) / (s - lr)
+            cx, cy = ac[0] + (bc[0] - ac[0]) * t, ac[1] + (bc[1] - ac[1]) * t
+            frames[f] = (round(cx - w / 2), round(cy - h / 2), w, h)
+        out.append(Track(a.id, frames, dict(a.scores), {f for f in frames if f not in a.scores}))
+    return out
+
+
+def cover_inner_holds(tracks: list[Track], cuts=frozenset(), skip=frozenset()) -> list[Track]:
+    """Widen held frames that sit between two real detections of the same track.
+
+    A held box is extrapolated from the last real detection; when that detection was
+    partial (face half behind an occluder) or the camera pans, the guess drifts off the
+    face. Once the next detection is known, each held frame between them is widened to
+    cover both neighbouring detections (masks only grow; never across a cut).
+    """
+    out: list[Track] = []
+    for t in tracks:
+        reals = sorted(f for f in t.scores if f in t.frames)
+        if t.id in skip or len(reals) < 2:
+            out.append(t)
+            continue
+        frames = dict(t.frames)
+        changed = False
+        for p, n in zip(reals, reals[1:]):
+            if n - p < 2 or any(p - CUT_SLACK < c <= n + CUT_SLACK for c in cuts):
+                continue
+            span = _union(t.frames[p], t.frames[n])
+            for f in range(p + 1, n):
+                if f in frames and f not in t.scores:
+                    frames[f] = _union(frames[f], span)
+                    changed = True
+        out.append(Track(t.id, frames, dict(t.scores), {f for f in frames if f not in t.scores}) if changed else t)
     return out
