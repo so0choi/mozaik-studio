@@ -10,9 +10,9 @@ against person boxes but never supported -> `no_support`; never had a person box
 `unknown`. `unknown` is never treated as a non-face.
 
 A track that is suspect AND `no_support` is flagged `nonface` in tracks.json: "likely not a face",
-pre-selected for the reviewer. It is NEVER auto-unmasked: that was tried and rejected, because on a
+unmasked by default at the end of analysis (product owner's call, 2026-11-05). Known risk: on a
 crowded street vlog 8 of 100 sampled such tracks were real faces (close-ups filling the frame, small
-crowd faces). Measured on ONE
+crowd faces); the reviewer can re-mask them from the "may not be a face" group. Measured on ONE
 video (139 hand-labelled tracks): 0 of 43 real faces lost, 47 of 90 non-faces caught, about
 19 ms per sampled frame on CPU. It is a single video, so treat the numbers as a first estimate.
 

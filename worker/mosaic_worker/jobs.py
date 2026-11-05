@@ -7,7 +7,7 @@ from typing import Callable
 import cv2
 
 from .detect import FaceDetector
-from .link import link_fragments, trim_holds_at_cuts
+from .link import bridge_gaps, cover_inner_holds, link_fragments, trim_holds_at_cuts
 from .normalize import Meta, find_original, normalize
 from .person import PersonGate
 from .review import build_review
@@ -39,9 +39,32 @@ def linked_person_states(groups: dict[str, list[str]], part_state: Callable[[str
 def nonface_ids(suspects, states: dict[str, str]) -> set[str]:
     """Likely not a face: failed the crop re-check AND no person box has a head where the face is. unknown never counts.
 
-    Only pre-selects tiles for the reviewer; never unmasks anything (see person.py).
+    These are unmasked at the end of analysis (seed_unmasked); see person.py for the measured risk.
     """
     return {t for t in suspects if states.get(t) == "no_support"}
+
+
+def seed_unmasked(job_dir: Path, ids) -> None:
+    """Add likely non-faces to edits.visible so they start unmasked; keeps every other edit."""
+    from .render import _read_json, default_edits
+
+    if not ids:
+        return
+    path = Path(job_dir) / "edits.json"
+    edits = _read_json(path, default_edits())
+    visible = list(edits.get("visible") or [])
+    visible += sorted(set(ids) - set(visible), key=lambda t: int(t[1:]) if t[1:].isdigit() else 0)
+    edits["visible"] = visible
+    atomic_write_json(path, edits)
+
+
+def bucket_ids(track_ids, suspects, states: dict[str, str]) -> set[str]:
+    """Tracks listed in the "may not be a face" bucket: crop re-check failed, or no person head was found there.
+
+    Membership only moves the tile into the bucket; it stays masked. Pre-checking is still nonface_ids only,
+    because tracks that pass the crop re-check but lack a person include real faces (5 of 33 on one test video).
+    """
+    return set(suspects) | {t for t in track_ids if states.get(t) == "no_support"}
 
 
 def likely_face_ids(track_ids, suspects, states: dict[str, str]) -> set[str]:
@@ -85,8 +108,8 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
     # a held box keeps a lost face masked; after a cut the shot changed, so the old box would cover the new scene
     tracks = trim_holds_at_cuts(tracks, scene.cuts)
     # A suspect alone is only a hint and stays masked. If the person gate also finds no head there it is flagged
-    # `nonface` (pre-selected in the review UI). Auto-unmask was tried and rejected: on a crowded street vlog
-    # 8 of 100 sampled such tracks were real faces (close-ups filling the frame, small crowd faces).
+    # `nonface` and unmasked by default (seed_unmasked). Known risk, accepted by the product owner on 2026-11-05:
+    # on a crowded street vlog 8 of 100 sampled such tracks were real faces (close-ups, small crowd faces).
     part_suspects = {p for parts in groups.values() for p in parts if not verifier.keep(p)}
     suspects = linked_suspects(groups, part_suspects)
     thumbs.merge(groups)
@@ -129,8 +152,13 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     info = thumbs.write([t.id for t in tracks], job_dir)
     nonface = nonface_ids(suspects, person_states)
     likely = likely_face_ids([t.id for t in tracks], suspects, person_states)
-    atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, suspects, nonface))
+    # after suspects/nonface are known: likely non-faces must not get their masks extended
+    tracks = cover_inner_holds(tracks, cuts, skip=nonface)
+    tracks = bridge_gaps(tracks, meta.fps, cuts, skip=nonface)
+    bucket = bucket_ids([t.id for t in tracks], suspects, person_states)
+    atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, bucket, nonface))
     atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps, (meta.width, meta.height), meta.frame_count, cuts, suspects, likely))
+    seed_unmasked(job_dir, nonface)
     if progress:
         progress("analyzing", 100)
 

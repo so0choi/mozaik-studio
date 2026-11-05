@@ -7,8 +7,8 @@ while 24 of 26 non-face tracks scored < 0.6.
 
 `suspect` (tracks.json) alone is only a HINT and never unmasks: on a crowded street vlog the
 same check failed many real profile, motion-blurred and small faces. A suspect that the person
-gate (person.py) also rejects is flagged `nonface`, which only pre-selects it in the review UI
-(auto-unmask was tried and rejected: 8 of 100 sampled such tracks on a street vlog were real faces).
+gate (person.py) also rejects is flagged `nonface` and starts unmasked (known risk: 8 of 100
+sampled such tracks on a street vlog were real faces).
 Runs inside the single decoding pass, so no extra seeking.
 `keep()` is False for a suspect; confident or never-judged tracks are never suspect.
 """
