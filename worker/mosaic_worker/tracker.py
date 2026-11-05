@@ -13,7 +13,10 @@ from .detect import Detection
 HIGH_SCORE = 0.6
 IOU_THRESHOLD = 0.3
 JUMP_DIAG_RATIO = 0.5
-HOLD_GROWTH = 1.05
+# Held boxes keep the last detected size. They used to grow x1.05/frame (1.8x after 0.5 s); on a labeled stage
+# video (2026-11-05, docs/qa/2026-11-05-like-jennie-false-mask.md) that mostly covered background, and keeping
+# the size left every labeled face covered.
+HOLD_GROWTH = 1.0
 EXPAND_RATIO = 0.25
 VEL_ALPHA = 0.5
 

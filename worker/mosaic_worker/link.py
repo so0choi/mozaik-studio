@@ -206,7 +206,9 @@ def cover_inner_holds(tracks: list[Track], cuts=frozenset(), skip=frozenset()) -
     return out
 
 
-LEAD_SEC = 0.5  # same as the tracker's hold after the last detection
+# 0.5 s (the tracker's hold) put 14 of 15 labeled leading boxes on non-faces on a stage video (2026-11-05);
+# 0.25 s removed 11 wrongly masked areas there with no labeled face exposed, 1 frame exposed one face.
+LEAD_SEC = 0.25
 
 
 def cover_leading(tracks: list[Track], fps: int, cuts=frozenset(), skip=frozenset()) -> list[Track]:

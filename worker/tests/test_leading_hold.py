@@ -18,10 +18,11 @@ def test_masks_frames_before_first_detection_from_video_start():
     assert out.scores == t.scores
 
 
-def test_reaches_back_at_most_half_a_second():
+def test_reaches_back_at_most_a_quarter_second():
+    # 0.5 s put 14 of 15 labeled leading boxes on non-faces; 0.25 s kept every labeled face covered
     t = _track({100: BOX}, [100])
     out = cover_leading([t], fps=24)[0]
-    assert min(out.frames) == 100 - 12
+    assert min(out.frames) == 100 - 6
 
 
 def test_never_reaches_back_across_a_cut():

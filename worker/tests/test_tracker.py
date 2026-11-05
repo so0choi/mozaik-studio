@@ -61,14 +61,14 @@ def test_gap_hold_60fps_is_30_frames():
     assert len(tracks[0].held) == 30
 
 
-def test_hold_box_grows_5_percent_per_frame_before_expansion():
+def test_hold_box_keeps_last_detected_size():
+    # Labeled stage video (2026-11-05): growing held boxes (x1.05/frame) mostly covered background;
+    # keeping the size removed wrongly masked areas with no labeled face newly exposed.
     dets = [[D(100, 100, 100, 100)] for _ in range(3)] + [[] for _ in range(3)]
     tr = run(30, dets)[0]
-    # frame 3 is the first held frame: size = 100 * 1.05, then expanded 25% once
     assert tr.frames[2][2] == round(100 * 1.25)
-    w3 = tr.frames[3][2]
-    assert w3 == round(100 * 1.05 * 1.25)
-    assert tr.frames[5][2] == round(100 * 1.05 ** 3 * 1.25)
+    assert tr.frames[3][2] == round(100 * 1.25)
+    assert tr.frames[5][2] == round(100 * 1.25)
 
 
 def test_hold_uses_constant_velocity_prediction():
