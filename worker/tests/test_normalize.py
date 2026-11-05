@@ -95,3 +95,22 @@ def test_normalized_video_has_a_keyframe_every_second(tmp_path):
     src = make_video(tmp_path / "original.mp4", _frames(90), fps=30)
     nz.normalize(src, tmp_path)
     assert _keyframe_count(tmp_path / "normalized.mp4") >= 3  # 0s, 1s, 2s
+
+
+def _first_video_pts(path):
+    import re
+    import subprocess
+
+    proc = subprocess.run(
+        [nz.ffmpeg_bin(), "-hide_banner", "-i", str(path), "-map", "0:v:0", "-frames:v", "1", "-vf", "showinfo", "-f", "null", "-"],
+        capture_output=True, text=True, errors="replace",
+    )
+    return float(re.search(r"pts_time:\s*([-\d.]+)", proc.stderr).group(1))
+
+
+def test_video_with_audio_starts_at_zero(tmp_path):
+    # AAC encoder priming must not shift the video: the studio maps time t to frame round(t * fps),
+    # so a 0.023 s video start made the masks run one frame ahead (faces exposed on the frame before a cut)
+    src = make_video(tmp_path / "original.mp4", _frames(48), fps=24, with_audio=True)
+    nz.normalize(src, tmp_path)
+    assert _first_video_pts(tmp_path / "normalized.mp4") == pytest.approx(0.0, abs=1e-3)

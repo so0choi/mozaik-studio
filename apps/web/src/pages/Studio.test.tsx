@@ -187,7 +187,7 @@ describe('Studio review and render', () => {
     await card('t1');
     await userEvent.click(screen.getByTestId('review-group-2'));
     const video = screen.getByLabelText('미리보기 영상') as HTMLVideoElement;
-    expect(video.currentTime).toBeCloseTo(300 / 30);
+    expect(video.currentTime).toBeCloseTo((300 + 0.5) / 30);
     expect(screen.getByTestId('time')).toHaveTextContent('00:10');
     // r2 is now the active card; r1's window moved to the upcoming list
     expect(screen.getByTestId('review-r2').tagName).toBe('SECTION');
@@ -459,11 +459,11 @@ describe('Studio seeking and playback keys', () => {
     await card('t1');
     mockPause.mockClear();
     await userEvent.click(screen.getByRole('button', { name: '1프레임 앞으로' }));
-    expect(video().currentTime).toBeCloseTo(1 / 30);
+    expect(video().currentTime).toBeCloseTo((1 + 0.5) / 30);
     await userEvent.click(screen.getByRole('button', { name: '1프레임 앞으로' }));
-    expect(video().currentTime).toBeCloseTo(2 / 30);
+    expect(video().currentTime).toBeCloseTo((2 + 0.5) / 30);
     await userEvent.click(screen.getByRole('button', { name: '1프레임 뒤로' }));
-    expect(video().currentTime).toBeCloseTo(1 / 30);
+    expect(video().currentTime).toBeCloseTo((1 + 0.5) / 30);
     expect(mockPause).toHaveBeenCalled();
   });
 
@@ -471,9 +471,9 @@ describe('Studio seeking and playback keys', () => {
     setup();
     await card('t1');
     await userEvent.keyboard('..');
-    expect(video().currentTime).toBeCloseTo(2 / 30);
+    expect(video().currentTime).toBeCloseTo((2 + 0.5) / 30);
     await userEvent.keyboard(',,,');
-    expect(video().currentTime).toBeCloseTo(0);
+    expect(video().currentTime).toBeCloseTo(0.5 / 30);
   });
 
   it('Space plays a paused video and pauses a playing one', async () => {
@@ -738,7 +738,7 @@ describe('Studio ManualBoxCard', () => {
     const c = await openChip();
     expect(screen.queryByRole('button', { name: /괜찮음/ })).toBeNull();
     expect(within(c).getByTestId('manual-range')).toHaveTextContent('00:00 - 00:01 (10-30f)');
-    expect((screen.getByLabelText('미리보기 영상') as HTMLVideoElement).currentTime).toBeCloseTo(10 / 30);
+    expect((screen.getByLabelText('미리보기 영상') as HTMLVideoElement).currentTime).toBeCloseTo((10 + 0.5) / 30);
     await userEvent.click(within(c).getByRole('button', { name: /닫기/ }));
     expect(screen.queryByTestId('manual-card-m1')).toBeNull();
   });

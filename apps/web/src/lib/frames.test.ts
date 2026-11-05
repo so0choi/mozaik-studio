@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { frameAt, formatTime } from './frames';
+import { frameAt, formatTime, timeOfFrame } from './frames';
 import { containRect, toDisplay, fromDisplay } from './geometry';
 
 describe('frameAt', () => {
-  it('rounds mediaTime*fps', () => {
+  it('returns the frame on screen: floor, not round', () => {
     expect(frameAt(1.5, 30)).toBe(45);
-    expect(frameAt(1.49, 30)).toBe(45);
+    expect(frameAt(1.49, 30)).toBe(44); // 44.7: frame 44 is still showing
     expect(frameAt(0, 30)).toBe(0);
     expect(frameAt(1.0166, 30)).toBe(30);
+    expect(frameAt(2470.9 / 24, 24)).toBe(2470); // late in frame 2470 must not draw 2471's masks
+    expect(frameAt(2470 / 24 - 1e-9, 24)).toBe(2470); // float error at a frame start
+  });
+  it('timeOfFrame seeks to the middle of a frame and maps back to it', () => {
+    for (const f of [0, 1, 2470, 2471, 3286]) expect(frameAt(timeOfFrame(f, 24), 24)).toBe(f);
   });
 });
 

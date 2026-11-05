@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { drawFrameEffects } from '../lib/effects';
 import { regionsForThumb, sampleFrames, scaleRegions, tileCount } from '../lib/filmstrip';
+import { timeOfFrame } from '../lib/frames';
 import type { Effect, Region } from '../lib/types';
 
 const THUMB_W = 96;
@@ -83,7 +84,7 @@ function FilmstripInner({ src, regions, background, srcW, srcH, fps, frameCount,
       const frames = sampleFrames(frameCount, wantN);
       for (let i = 0; i < frames.length; i++) {
         if (signal.aborted) return;
-        const ok = await seekTo(v, frames[i] / fps, signal);
+        const ok = await seekTo(v, timeOfFrame(frames[i], fps), signal);
         if (signal.aborted) return;
         if (!ok || !v.videoWidth) continue;
         const c = document.createElement('canvas');

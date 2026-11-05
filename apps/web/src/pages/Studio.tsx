@@ -29,7 +29,7 @@ import { effectName } from '../studio/EffectControls';
 import { effectFor, maskRegions } from '../lib/masks';
 import { people as buildPeople } from '../lib/people';
 import { pieces } from '../lib/pieces';
-import { formatDuration } from '../lib/frames';
+import { formatDuration, timeOfFrame } from '../lib/frames';
 import type { Box, Edits, Effect, Job, ManualDoc, ManualState, ReviewItem, Shape, TracksDoc } from '../lib/types';
 import { BoxTool } from '../studio/BoxTool';
 import { MaskPicker } from '../studio/MaskPicker';
@@ -355,7 +355,7 @@ export function Studio() {
       const v = videoRef.current;
       if (v) {
         try {
-          v.currentTime = clamped / fps;
+          v.currentTime = timeOfFrame(clamped, fps);
         } catch {
           /* metadata not ready */
         }

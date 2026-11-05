@@ -126,7 +126,9 @@ def normalize(src: Path, job_dir: Path) -> Meta:
         # a keyframe every second: the studio seeks constantly, and x264's default (250 frames) makes each seek slow
         "-g", str(fps),
         *(["-c:a", "aac", "-b:a", "128k"] if info.has_audio else ["-an"]),
-        "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
+        # no -avoid_negative_ts make_zero: AAC priming (1024 samples) would shift the video to start at
+        # ~0.023 s, and the studio (frame = round(t * fps)) would draw masks one frame ahead of the picture
+        "-movflags", "+faststart",
         "-f", "mp4", str(tmp),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
