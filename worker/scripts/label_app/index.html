@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>라벨링</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #14161a; color: #e8eaed; font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; font-size: 16px; }
+  header { padding: 10px 20px; background: #1d2026; border-bottom: 1px solid #2c3038; }
+  .top { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  .prog { flex: 1; min-width: 200px; }
+  .bar { height: 10px; background: #2c3038; border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: #3ecf8e; transition: width .2s; }
+  .counts { font-size: 14px; color: #aab; margin-top: 4px; }
+  .opts { display: flex; gap: 12px; align-items: center; font-size: 14px; color: #ccd; }
+  #status { min-width: 120px; font-size: 14px; }
+  #status.ok { color: #3ecf8e; } #status.err { color: #ff6b6b; font-weight: bold; }
+  main { padding: 12px 20px 24px; max-width: 1500px; margin: 0 auto; }
+  .intro { background: #23303a; border-left: 4px solid #4ea1ff; padding: 8px 12px; margin-bottom: 10px; border-radius: 4px; }
+  .meta { color: #9aa; font-size: 14px; margin-bottom: 4px; }
+  .q { font-size: 20px; font-weight: bold; margin: 6px 0 2px; }
+  .hint { color: #b9c; font-size: 14px; margin-bottom: 8px; }
+  .imgs { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  img { display: block; max-width: 100%; max-height: 58vh; background: #000; }
+  .imgbox { position: relative; display: inline-block; line-height: 0; }
+  .imgbox img { user-select: none; -webkit-user-drag: none; }
+  .imgbox.miss { cursor: crosshair; }
+  .thumb img { max-height: 30vh; max-width: 36vw; }
+  .thumb .cap { font-size: 13px; color: #9aa; margin-bottom: 4px; }
+  .wrong { position: absolute; border: 3px solid #ff4d4d; background: rgba(255,60,60,.35); border-radius: 50%; color: #fff; font: bold 12px/1 sans-serif; display: flex; align-items: center; justify-content: center; text-shadow: 0 0 3px #000; box-sizing: border-box; }
+  .pt { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 3px solid #ffe14d; background: rgba(255,225,77,.25); color: #fff; font: bold 14px/20px sans-serif; text-align: center; cursor: pointer; text-shadow: 0 0 3px #000; }
+  .btns { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  button { font: inherit; font-size: 18px; padding: 14px 22px; border-radius: 10px; border: 2px solid #3a4150; background: #262b34; color: #fff; cursor: pointer; }
+  button:hover:not(:disabled) { background: #313845; }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+  button.chosen { border-color: #3ecf8e; background: #1f4a38; }
+  button .k { display: inline-block; min-width: 22px; margin-right: 6px; padding: 0 6px; border-radius: 4px; background: #00000066; font-size: 14px; }
+  .nav { display: flex; gap: 10px; margin-top: 14px; align-items: center; }
+  .nav button { font-size: 15px; padding: 8px 14px; }
+  .end { text-align: center; padding: 60px 20px; font-size: 26px; }
+  .small { font-size: 14px; color: #9aa; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1 id="title">라벨링</h1>
+    <div class="prog">
+      <div class="bar"><div id="barfill"></div></div>
+      <div class="counts"><span id="ptext"></span> &nbsp;·&nbsp; <span id="ctext"></span></div>
+    </div>
+    <label class="opts"><input type="checkbox" id="onlyTodo"> 답 안 한 것만 보기</label>
+    <div id="status"></div>
+  </div>
+</header>
+<main id="main"></main>
+
+<script>
+(function () {
+  var TASKS = ["cut", "box", "miss"];
+  var TASK_NAME = { cut: "장면", box: "박스", miss: "놓친 얼굴" };
+  var INTRO = {
+    cut: "1단계: 장면이 바뀌었는지 골라 주세요",
+    box: "2단계: 노란 박스 안에 얼굴이 있는지 골라 주세요",
+    miss: "3단계: 가려지지 않은 얼굴, 그리고 얼굴이 아닌데 가려진 곳을 클릭해 주세요"
+  };
+  var meta = null, items = [], answers = {}, idx = 0, points = [], finished = false;
+  var $ = function (id) { return document.getElementById(id); };
+  var statusTimer = null;
+
+  function setStatus(text, cls) {
+    var s = $("status"); s.textContent = text; s.className = cls || "";
+    clearTimeout(statusTimer);
+    if (cls === "ok") statusTimer = setTimeout(function () { s.textContent = ""; }, 2500);
+  }
+  function fmtTime(t) {
+    var m = Math.floor(t / 60), s = t - m * 60;
+    return m + "분 " + s.toFixed(1) + "초";
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function load() {
+    Promise.all([
+      fetch("/sheet/items.json", { cache: "no-store" }).then(function (r) { return r.json(); }),
+      fetch("/api/labels", { cache: "no-store" }).then(function (r) { return r.json(); })
+    ]).then(function (res) {
+      meta = res[0]; answers = res[1] || {};
+      var all = meta.items || [];
+      items = [];
+      TASKS.forEach(function (t) { all.forEach(function (it) { if (it.task === t) items.push(it); }); });
+      $("title").textContent = meta.title || "라벨링";
+      idx = firstTodo(0);
+      if (idx < 0) idx = 0;
+      render();
+    }).catch(function (e) { console.error(e); setStatus("불러오기 실패 — 새로고침 해 주세요", "err"); });
+  }
+
+  function answered(it) {
+    var a = answers[it.id];
+    if (!a) return false;
+    return it.task !== "miss" || a.v === 2;  // v2 = also asked about masks that cover no face
+  }
+  function firstTodo(from) {
+    for (var i = from; i < items.length; i++) if (!answered(items[i])) return i;
+    for (var j = 0; j < from; j++) if (!answered(items[j])) return j;
+    return -1;
+  }
+  function allDone() { return items.length > 0 && items.every(answered); }
+
+  function updateHeader() {
+    var done = items.filter(answered).length;
+    $("barfill").style.width = (items.length ? 100 * done / items.length : 0) + "%";
+    $("ptext").textContent = done + " / " + items.length + " 완료";
+    $("ctext").textContent = TASKS.map(function (t) {
+      var l = items.filter(function (i) { return i.task === t; });
+      return TASK_NAME[t] + " " + l.filter(answered).length + "/" + l.length;
+    }).join(" · ");
+  }
+
+  function move(dir) {
+    var only = $("onlyTodo").checked;
+    var i = idx + dir;
+    while (i >= 0 && i < items.length) {
+      if (!only || !answered(items[i])) break;
+      i += dir;
+    }
+    if (i < 0) return;
+    if (i >= items.length) {
+      if (allDone()) { finished = true; render(); }
+      return;
+    }
+    idx = i; finished = false; render();
+  }
+
+  function save(it, answer) {
+    setStatus("저장 중…");
+    return fetch("/api/labels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: it.id, answer: answer })
+    }).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    }).then(function (all) {
+      answers = all; setStatus("저장됨", "ok"); return true;
+    }).catch(function () {
+      setStatus("저장 실패 — 다시 시도", "err"); return false;
+    });
+  }
+
+  function answer(it, ans) {
+    var at = idx;
+    save(it, ans).then(function (ok) {
+      if (idx !== at) { updateHeader(); return; }  // the user already moved on while saving: do not yank them
+      if (!ok) { render(); return; }
+      if (allDone()) { finished = true; render(); return; }
+      if (idx >= items.length - 1) { var n = firstTodo(0); if (n >= 0) { idx = n; render(); } else render(); return; }
+      move(1);
+    });
+  }
+
+  var OPTIONS = {
+    cut: {
+      q: "왼쪽에서 오른쪽으로 넘어갈 때 장면(카메라 컷)이 바뀌었나요?",
+      hint: "조명 색이 바뀌거나 번쩍이는 것은 같은 장면입니다.",
+      btns: [["장면 바뀜", "cut"], ["같은 장면(조명·움직임만 바뀜)", "same"], ["모르겠음", "unsure"]]
+    },
+    box: {
+      q: "노란 박스 안에 사람 얼굴(또는 머리)이 있나요?",
+      hint: "뒤통수·옆모습·흐릿한 얼굴도 '얼굴 있음'입니다.",
+      btns: [["얼굴 있음", "face"], ["얼굴 아님", "not_face"], ["모르겠음", "unsure"]]
+    }
+  };
+
+  function render() {
+    updateHeader();
+    var main = $("main");
+    main.textContent = "";
+    if (!items.length) { main.appendChild(el("div", "end", "항목이 없습니다.")); return; }
+    if (finished && allDone()) {
+      main.appendChild(el("div", "end", "끝! 수고하셨어요. 이 창을 닫아도 됩니다."));
+      var b = el("button", null, "처음부터 다시 보기");
+      b.onclick = function () { finished = false; idx = 0; $("onlyTodo").checked = false; render(); };
+      var w = el("div", "end"); w.style.padding = "0"; w.appendChild(b); main.appendChild(w);
+      return;
+    }
+    var it = items[idx];
+    var saved = answers[it.id] || null;
+    var prev = items[idx - 1];
+    if (!prev || prev.task !== it.task) main.appendChild(el("div", "intro", INTRO[it.task] || ""));
+
+    var inTask = items.filter(function (i) { return i.task === it.task; });
+    var nth = inTask.indexOf(it) + 1;
+    main.appendChild(el("div", "meta",
+      "#" + (idx + 1) + " · " + TASK_NAME[it.task] + " " + nth + "/" + inTask.length + " · 영상 시간 " + fmtTime(it.t)));
+
+    if (it.task === "miss") renderMiss(main, it, saved);
+    else renderChoice(main, it, saved);
+
+    var nav = el("div", "nav");
+    var pb = el("button", null, "← 이전"); pb.onclick = function () { move(-1); };
+    var nb = el("button", null, "다음 →"); nb.onclick = function () { move(1); };
+    nav.appendChild(pb); nav.appendChild(nb);
+    nav.appendChild(el("span", "small", "키보드: 1·2·3 선택, ← → 이동"));
+    main.appendChild(nav);
+  }
+
+  function mkBtn(label, key, chosen, onclick) {
+    var b = el("button", chosen ? "chosen" : "");
+    b.appendChild(el("span", "k", String(key)));
+    b.appendChild(document.createTextNode(label));
+    b.onclick = onclick;
+    return b;
+  }
+
+  function renderChoice(main, it, saved) {
+    var o = OPTIONS[it.task];
+    main.appendChild(el("div", "q", o.q));
+    main.appendChild(el("div", "hint", o.hint));
+    var imgs = el("div", "imgs");
+    var im = el("img"); im.src = "/sheet/" + it.img; im.alt = "";
+    imgs.appendChild(im);
+    if (it.task === "box" && it.thumb) {
+      var th = el("div", "thumb");
+      th.appendChild(el("div", "cap", "전체 장면에서의 위치"));
+      var ti = el("img"); ti.src = "/sheet/" + it.thumb; ti.alt = "";
+      th.appendChild(ti); imgs.appendChild(th);
+    }
+    main.appendChild(imgs);
+    var btns = el("div", "btns");
+    o.btns.forEach(function (bd, i) {
+      btns.appendChild(mkBtn(bd[0], i + 1, saved && saved.label === bd[1], function () {
+        answer(it, { label: bd[1] });
+      }));
+    });
+    main.appendChild(btns);
+    window.__keyActions = o.btns.map(function (bd) { return function () { answer(it, { label: bd[1] }); }; });
+  }
+
+  function renderMiss(main, it, saved) {
+    points = saved && saved.points ? saved.points.map(function (p) { return [p[0], p[1]]; }) : [];
+    var ells = it.ellipses || [];
+    var wrong = {};  // ellipse index -> click point (frame px)
+    (saved && saved.wrong || []).forEach(function (w) {
+      var k = ells.findIndex(function (e) { return e.id === w.id; });
+      if (k >= 0) wrong[k] = w.point;
+    });
+    main.appendChild(el("div", "q", "① 보라색 테두리 밖에 가려지지 않은 얼굴이 있으면 그 얼굴을 클릭하세요."));
+    main.appendChild(el("div", "q", "② 보라색 테두리 중 얼굴이 아닌 곳(배경·옷·손 등)을 가린 것도 클릭하세요. 빨갛게 바뀝니다."));
+    main.appendChild(el("div", "hint", "둘 다 없으면 그냥 '완료'를 누르세요. 잘못 눌렀으면 다시 클릭하면 취소됩니다(Backspace: 마지막 얼굴 점 취소)."));
+    var box = el("div", "imgbox miss");
+    var im = el("img"); im.alt = ""; im.src = "/sheet/" + it.img;
+    box.appendChild(im);
+    var layer = el("div"); layer.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none";
+    box.appendChild(layer);
+    main.appendChild(box);
+
+    var W = meta.width, H = meta.height;
+    var btnDone, btnUnsure;
+
+    function drawPoints() {
+      layer.textContent = "";
+      Object.keys(wrong).forEach(function (k) {
+        var e = ells[k];
+        var d = el("div", "wrong", "얼굴 아님");
+        d.style.left = (100 * (e.cx - e.rx) / W) + "%";
+        d.style.top = (100 * (e.cy - e.ry) / H) + "%";
+        d.style.width = (100 * 2 * e.rx / W) + "%";
+        d.style.height = (100 * 2 * e.ry / H) + "%";
+        layer.appendChild(d);
+      });
+      points.forEach(function (p, i) {
+        var d = el("div", "pt", String(i + 1));
+        d.style.left = (100 * p[0] / W) + "%";
+        d.style.top = (100 * p[1] / H) + "%";
+        d.style.pointerEvents = "auto";
+        d.onclick = function (e) { e.stopPropagation(); points.splice(i, 1); drawPoints(); };
+        layer.appendChild(d);
+      });
+    }
+    function hit(x, y) {  // smallest drawn ellipse containing the click, or -1
+      var best = -1, area = Infinity;
+      ells.forEach(function (e, k) {
+        var dx = (x - e.cx) / Math.max(1, e.rx), dy = (y - e.cy) / Math.max(1, e.ry);
+        if (dx * dx + dy * dy <= 1 && e.rx * e.ry < area) { best = k; area = e.rx * e.ry; }
+      });
+      return best;
+    }
+    box.addEventListener("click", function (e) {
+      var r = im.getBoundingClientRect();
+      if (!r.width) return;
+      var x = (e.clientX - r.left) * (W / r.width);
+      var y = (e.clientY - r.top) * (H / r.height);
+      if (x < 0 || y < 0 || x > W || y > H) return;
+      var k = hit(x, y);
+      if (k >= 0) {
+        if (wrong[k]) delete wrong[k]; else wrong[k] = [Math.round(x * 10) / 10, Math.round(y * 10) / 10];
+      } else {
+        points.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
+      }
+      drawPoints();
+    });
+
+    var btns = el("div", "btns");
+    var lab = saved && saved.label;
+    function result(label) {
+      var w = Object.keys(wrong).map(function (k) { return { id: ells[k].id, point: wrong[k] }; });
+      return { label: label, points: points.map(function (p) { return p.slice(); }), wrong: w,
+               wrong_points: w.map(function (x) { return x.point; }), v: 2 };
+    }
+    var done = saved && saved.v === 2;
+    btnDone = mkBtn("완료 (표시할 게 없으면 그냥 누르기)", 1, done && lab !== "unsure", function () {
+      answer(it, result(points.length ? "faces" : "none"));
+    });
+    btnUnsure = mkBtn("모르겠음", 2, done && lab === "unsure", function () { answer(it, result("unsure")); });
+    btns.appendChild(btnDone); btns.appendChild(btnUnsure);
+    main.appendChild(btns);
+    drawPoints();
+    window.__keyActions = [function () { btnDone.click(); }, function () { btnUnsure.click(); }];
+    window.__undoPoint = function () { points.pop(); drawPoints(); };
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey || !items.length) return;
+    if (finished && allDone()) return;
+    var it = items[idx];
+    if (e.key >= "1" && e.key <= "3") {
+      var a = window.__keyActions && window.__keyActions[+e.key - 1];
+      if (a) { e.preventDefault(); a(); }
+    } else if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); move(1); }
+    else if (e.key === "Backspace" && it && it.task === "miss") {
+      e.preventDefault(); if (window.__undoPoint) window.__undoPoint();
+    }
+  });
+  $("onlyTodo").addEventListener("change", function () {
+    if (answered(items[idx])) { var n = firstTodo(idx); if (n >= 0 && $("onlyTodo").checked) { idx = n; render(); } }
+  });
+  window.addEventListener("resize", function () { /* points are percent-positioned; nothing to do */ });
+
+  load();
+})();
+</script>
+</body>
+</html>
