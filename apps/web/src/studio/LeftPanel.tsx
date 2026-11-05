@@ -167,18 +167,6 @@ function LeftPanelInner(p: Props) {
           {p.effects.background && <p className="sub">가림을 해제한 인물에도 적용됩니다</p>}
         </section>
 
-        <section className="bcard" aria-label="매직 블러">
-          <div className="bc-head">
-            <h2>
-              매직 블러 <span className="new">NEW</span>
-            </h2>
-          </div>
-          <p className="sub">가릴 대상을 선택하세요.</p>
-          <button type="button" className="wide" disabled title={SOON}>
-            대상 선택
-          </button>
-        </section>
-
         <div className="lfoot">
           <button type="button" disabled title={SOON}>
             기본값으로 초기화

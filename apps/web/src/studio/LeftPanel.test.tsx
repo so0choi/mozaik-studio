@@ -45,18 +45,17 @@ describe('LeftPanel effects', () => {
     expect(h.onBackground).toHaveBeenCalledWith(null);
   });
 
-  it('effects sections come before the 매직 블러 card; renamed cards', () => {
+  it('no 매직 블러 card (not supported); renamed cards', () => {
     setup();
-    const order = (a: HTMLElement, b: HTMLElement) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(order(card('기본 효과'), card('매직 블러'))).toBeTruthy();
-    expect(order(card('배경 효과'), card('매직 블러'))).toBeTruthy();
+    expect(screen.queryByRole('region', { name: '매직 블러' })).toBeNull();
+    expect(screen.queryByText(/매직 블러/)).toBeNull();
     expect(screen.getByRole('heading', { name: /자동 가림/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '직접 가림' })).toBeInTheDocument();
   });
 
   it('remaining placeholders stay disabled', () => {
     setup();
-    for (const n of ['자동차 번호판', '대상 선택', '기본값으로 초기화', '고급 설정']) {
+    for (const n of ['자동차 번호판', '기본값으로 초기화', '고급 설정']) {
       expect(screen.getByRole('button', { name: n })).toBeDisabled();
     }
   });
