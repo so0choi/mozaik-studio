@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppConfig, CONFIG } from '../config';
 import { REDIS } from '../core.module';
-import { requiredItems, type ReviewItemLike } from './review-required';
+import type { ReviewItemLike } from './review-required';
 import { DEFAULT_EDITS, isValidBox, validateEdits } from './edits.validator';
 import { manualKey, Queue, QUEUE_ANALYZE, QUEUE_PROPAGATE, QUEUE_RENDER, renderRequestedKey, statusKey } from './queue';
 import { JobRepo, JobRow } from './repo';
@@ -203,10 +203,6 @@ export class JobsService {
     if (this.renderLocks.has(id)) throw new ConflictException('이미 렌더 중입니다.');
     this.renderLocks.add(id);
     try {
-      const edits: any = this.getEdits(id);
-      const pending = requiredItems(this.reviewItems(id), edits).length;
-      if (pending > 0) throw new ConflictException(`확인 필요 항목 ${pending}건이 남았습니다.`);
-
       const status = await this.status(id);
       if (status.state === 'rendering' || (await this.renderPending(id, status))) {
         throw new ConflictException('이미 렌더 중입니다.');

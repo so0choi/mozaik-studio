@@ -168,15 +168,17 @@ describe('Studio people list', () => {
 });
 
 describe('Studio review and render', () => {
-  it('disables render until review items are resolved; 괜찮음 adds reviewed', async () => {
+  it('render stays enabled with unresolved items (with a tooltip); 괜찮음 adds reviewed', async () => {
     const calls = setup();
     await card('t1');
     const renderBtn = screen.getByRole('button', { name: '렌더 후 다운로드' });
-    expect(renderBtn).toBeDisabled();
+    expect(renderBtn).toBeEnabled();
+    expect(renderBtn).toHaveAttribute('title', expect.stringContaining('확인하지 않은 1건'));
     expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 1건 · 1구간 남음');
     await userEvent.click(screen.getByRole('button', { name: /괜찮음/ }));
     expect(screen.getByTestId('note')).toHaveTextContent('모든 항목 확인됨');
     expect(renderBtn).toBeEnabled();
+    expect(renderBtn).not.toHaveAttribute('title');
     await waitFor(() => expect(puts(calls).length).toBe(1), { timeout: 2000 });
     expect((puts(calls)[0].body as Edits).reviewed).toEqual(['r1']);
   });
@@ -256,7 +258,7 @@ describe('Studio required review items', () => {
     await toggle('t1', '인물 1');
     expect(await screen.findByTestId('review-r9')).toBeInTheDocument();
     expect(screen.getByTestId('note')).toHaveTextContent('확인 필요 1건 · 1구간 남음');
-    expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '렌더 후 다운로드' })).toBeEnabled();
     expect(screen.queryByTestId('hidden-note')).toBeNull();
 
     await toggle('t2', '인물 2');

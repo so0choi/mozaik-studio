@@ -1018,7 +1018,7 @@ export function Studio() {
     : trackingCount
       ? '수동 영역 추적 중'
       : '모든 항목 확인됨';
-  const canRender = unresolved.length === 0 && trackingCount === 0 && renderPhase === 'idle' && !savingForRender;
+  const canRender = trackingCount === 0 && renderPhase === 'idle' && !savingForRender;
 
   return (
     <>
@@ -1050,7 +1050,7 @@ export function Studio() {
           >
             다시 분석
           </button>
-          <button type="button" className="btn-primary" disabled={!canRender} onClick={() => void startRender()}>
+          <button type="button" className="btn-primary" disabled={!canRender} title={unresolved.length ? `확인하지 않은 ${unresolved.length}건이 있어도 렌더할 수 있습니다. 해당 구간은 자동 검출 결과대로 가려집니다.` : undefined} onClick={() => void startRender()}>
             {savingForRender ? (
               <>
                 <i className="spin" /> 저장 중…
