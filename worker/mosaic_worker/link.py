@@ -204,3 +204,35 @@ def cover_inner_holds(tracks: list[Track], cuts=frozenset(), skip=frozenset()) -
                     changed = True
         out.append(Track(t.id, frames, dict(t.scores), {f for f in frames if f not in t.scores}) if changed else t)
     return out
+
+
+LEAD_SEC = 0.5  # same as the tracker's hold after the last detection
+
+
+def cover_leading(tracks: list[Track], fps: int, cuts=frozenset(), skip=frozenset()) -> list[Track]:
+    """Hold each track's first detected box for up to LEAD_SEC BEFORE that detection.
+
+    A face is often visible a few frames before the detector first fires (entering the frame, turning
+    toward the camera, motion blur); nothing covered those frames. Never reaches back past a cut (a cut
+    index is the first frame of the new shot) or before frame 0. Existing frames are kept as they are.
+    """
+    lead = max(1, round(LEAD_SEC * fps))
+    out: list[Track] = []
+    for t in tracks:
+        if t.id in skip or not t.scores:
+            out.append(t)
+            continue
+        s = min(t.scores)
+        if s not in t.frames:
+            out.append(t)
+            continue
+        start = max(0, s - lead, max((c for c in cuts if c <= s), default=0))
+        missing = [f for f in range(start, s) if f not in t.frames]
+        if not missing:
+            out.append(t)
+            continue
+        frames = dict(t.frames)
+        for f in missing:
+            frames[f] = t.frames[s]
+        out.append(Track(t.id, frames, dict(t.scores), {f for f in frames if f not in t.scores}))
+    return out

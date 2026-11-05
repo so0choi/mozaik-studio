@@ -7,7 +7,7 @@ from typing import Callable
 import cv2
 
 from .detect import FaceDetector
-from .link import bridge_gaps, cover_inner_holds, link_fragments, trim_holds_at_cuts
+from .link import bridge_gaps, cover_inner_holds, cover_leading, link_fragments, trim_holds_at_cuts
 from .normalize import Meta, find_original, normalize
 from .person import PersonGate
 from .review import build_review
@@ -155,6 +155,7 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     # after suspects/nonface are known: likely non-faces must not get their masks extended
     tracks = cover_inner_holds(tracks, cuts, skip=nonface)
     tracks = bridge_gaps(tracks, meta.fps, cuts, skip=nonface)
+    tracks = cover_leading(tracks, meta.fps, cuts, skip=nonface)
     bucket = bucket_ids([t.id for t in tracks], suspects, person_states)
     atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, bucket, nonface))
     atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps, (meta.width, meta.height), meta.frame_count, cuts, suspects, likely))
