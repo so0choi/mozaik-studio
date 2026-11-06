@@ -22,7 +22,10 @@ LINK_MAX_GAP_SEC = 1 / 6
 # track's hold (0.5 s) runs out before a new track for the same face starts. Measured: 13 such gaps in a
 # 115 s video, 984 in a 23-min street vlog (median 10 frames). Identities stay separate; we only keep the
 # uncovered frames masked.
-BRIDGE_MAX_SEC = 1.5
+# 2.5 s (was 1.5): a raised arm hid a profile for 2.08 s in pexels-9003393 and left the face bare. On the
+# labeled sheets 2.5 s fixed one more street exposure and added no labeled wrong mask; the cost is ~5-10 %
+# more masked box-frames (docs/qa/2026-11-05-like-jennie-false-mask.md).
+BRIDGE_MAX_SEC = 2.5
 BRIDGE_MAX_DIST_SIDES = 2.0
 BRIDGE_MAX_SIZE_RATIO = 3.0
 

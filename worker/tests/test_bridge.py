@@ -37,7 +37,7 @@ def test_fills_measured_gap_as_held_interpolated_max_size():
 def test_no_bridge_cases():
     for kw in (
         dict(b_box=(100 + 2 * 40 + 80, 100, 50, 50)),  # > 2 raw sides away (side 40)
-        dict(b_start=10 + 36 + 1),  # after lr + 1.5 s
+        dict(b_start=10 + 60 + 1),  # after lr + 2.5 s
         dict(b_box=(110, 100, 160, 160)),  # size ratio > 3
         dict(cuts=frozenset({20})),
         dict(b_start=16),  # B starts at L + 1 (no gap)
@@ -46,6 +46,12 @@ def test_no_bridge_cases():
     ):
         a, b, out = case(**kw)
         assert out[0] is a, kw
+
+
+def test_bridges_two_second_miss():
+    # pexels-9003393 at 9 s: a raised arm hid a profile from YuNet for 2.08 s (last detection to next track).
+    a, b, out = case(b_start=10 + 50)
+    assert set(range(16, 60)) <= set(out[0].frames) and 60 not in out[0].frames
 
 
 def test_earliest_candidate_wins():
