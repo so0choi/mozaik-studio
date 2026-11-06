@@ -54,4 +54,35 @@ describe('PlayerControls', () => {
     expect(seen).toEqual([1.5, 2, 0.5, 1]);
     expect(screen.getByRole('button', { name: /재생 속도/ })).toHaveTextContent('1x');
   });
+
+  it('debug controls only render when onToggleDebug is given; extras only while debug is on', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: '검출 박스' })).toBeNull();
+  });
+
+  it('검출 박스 toggle shows 모자이크 끄기 / 프레임 정보 복사 only when on', () => {
+    const onToggleDebug = vi.fn();
+    const onToggleMasks = vi.fn();
+    const onCopyFrame = vi.fn();
+    const base = { onToggleDebug, onToggleMasks, onCopyFrame };
+    const { rerender } = (() => {
+      const video = document.createElement('video');
+      const ref = { current: video };
+      const r = render(<PlayerControls videoRef={ref as never} fps={30} frame={0} frameCount={9} onTogglePlay={vi.fn()} onSeek={vi.fn()} onStep={vi.fn()} {...base} debug={false} />);
+      return { rerender: (o: object) => r.rerender(<PlayerControls videoRef={ref as never} fps={30} frame={0} frameCount={9} onTogglePlay={vi.fn()} onSeek={vi.fn()} onStep={vi.fn()} {...base} {...o} />) };
+    })();
+    const t = screen.getByRole('button', { name: '검출 박스' });
+    expect(t).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: '모자이크 끄기' })).toBeNull();
+    fireEvent.click(t);
+    expect(onToggleDebug).toHaveBeenCalled();
+    rerender({ debug: true, masksOff: true });
+    expect(screen.getByRole('button', { name: '검출 박스' })).toHaveAttribute('aria-pressed', 'true');
+    const m = screen.getByRole('button', { name: '모자이크 끄기' });
+    expect(m).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(m);
+    expect(onToggleMasks).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '프레임 정보 복사' }));
+    expect(onCopyFrame).toHaveBeenCalled();
+  });
 });

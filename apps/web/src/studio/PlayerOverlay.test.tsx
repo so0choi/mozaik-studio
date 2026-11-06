@@ -37,3 +37,44 @@ describe('PlayerOverlay frame clock', () => {
     expect(onFrame).toHaveBeenLastCalledWith(61);
   });
 });
+
+describe('PlayerOverlay debug boxes', () => {
+  const makeCtx = () => {
+    const calls: Record<string, unknown[][]> = {};
+    return new Proxy({ calls } as Record<string, unknown>, {
+      get(t, k: string) {
+        if (k === 'calls') return calls;
+        if (k === 'measureText') return () => ({ width: 30 });
+        if (k in t) return t[k];
+        return (...a: unknown[]) => { (calls[k] ||= []).push(a); };
+      },
+      set(t, k: string, v) { t[k] = v; return true; },
+    }) as unknown as CanvasRenderingContext2D & { calls: Record<string, unknown[][]> };
+  };
+
+  it('strokes each debug box and draws labels + frame tag; raw video when masksOff', () => {
+    const ctx = makeCtx();
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never);
+    const debugBoxes = vi.fn(() => [
+      { id: 't1', kind: 'detected' as const, box: [10, 10, 50, 50] as [number, number, number, number], score: 0.9, state: '가림' as const, label: 't1 0.90 · 가림' },
+      { id: 't2', kind: 'held' as const, box: [100, 100, 50, 50] as [number, number, number, number], score: null, state: '보임' as const, label: 't2 유지 · 보임' },
+    ]);
+    const ref = createRef<HTMLVideoElement>();
+    render(<PlayerOverlay {...base} videoRef={ref as never} onFrame={vi.fn()} debugBoxes={debugBoxes} masksOff />);
+    expect(debugBoxes).toHaveBeenCalled();
+    expect(ctx.calls.strokeRect.length).toBeGreaterThanOrEqual(2);
+    const texts = ctx.calls.fillText.map((a) => a[0]);
+    expect(texts).toContain('t1 0.90 · 가림');
+    expect(texts).toContain('t2 유지 · 보임');
+    expect(texts.some((t) => String(t).startsWith('f 0 · 00:00.00'))).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('draws no debug text without debugBoxes', () => {
+    const ctx = makeCtx();
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never);
+    render(<PlayerOverlay {...base} videoRef={createRef<HTMLVideoElement>() as never} onFrame={vi.fn()} />);
+    expect(ctx.calls.fillText).toBeUndefined();
+    spy.mockRestore();
+  });
+});

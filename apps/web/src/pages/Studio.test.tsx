@@ -1353,3 +1353,33 @@ describe('Studio re-analyze', () => {
     expect(screen.getByTestId('card-t1')).toBeInTheDocument();
   });
 });
+
+describe('Studio detection-box debug', () => {
+  it('D key and the 검출 박스 button toggle aria-pressed; 모자이크 끄기 only while on', async () => {
+    setup();
+    const btn = await screen.findByRole('button', { name: '검출 박스' });
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: '모자이크 끄기' })).toBeNull();
+    fireEvent.keyDown(window, { key: 'd' });
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+    const off = screen.getByRole('button', { name: '모자이크 끄기' });
+    await userEvent.click(off);
+    expect(off).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: '모자이크 끄기' })).toBeNull();
+    await userEvent.click(btn);
+    expect(screen.getByRole('button', { name: '모자이크 끄기' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('프레임 정보 복사 writes the frame text to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    setup();
+    await userEvent.click(await screen.findByRole('button', { name: '검출 박스' }));
+    await userEvent.click(screen.getByRole('button', { name: '프레임 정보 복사' }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0][0]).toContain('작업 j1 · 프레임');
+    expect(await screen.findByRole('button', { name: '복사됨' })).toBeInTheDocument();
+  });
+});

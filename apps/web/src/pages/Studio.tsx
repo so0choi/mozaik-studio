@@ -21,6 +21,7 @@ import {
   unmaskPiece,
   splitTrack,
 } from '../lib/edits';
+import { debugBoxesAt, debugFrameText } from '../lib/debugBoxes';
 import { enlargeBox } from '../lib/geometry';
 import { emptyHistory, push as pushHistory, redo as redoHistory, undo as undoHistory, type History } from '../lib/history';
 import { normalizeEffects } from '../lib/effectParams';
@@ -101,6 +102,10 @@ export function Studio() {
   const [renderError, setRenderError] = useState<string | null>(null);
   const [outputReady, setOutputReady] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [debug, setDebug] = useState(false);
+  const [masksOff, setMasksOff] = useState(false);
+  const [copyLabel, setCopyLabel] = useState<string | undefined>(undefined);
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>();
   const [confirmReanalyze, setConfirmReanalyze] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   // bumped after a re-analysis so job polling restarts and the load effect runs again
@@ -321,6 +326,30 @@ export function Studio() {
     },
     [current, pieceById],
   );
+
+  const debugBoxesFn = useCallback(
+    (f: number) => debugBoxesAt(f, tracks!, edits, Object.values(manualDocs)),
+    [tracks, edits, manualDocs],
+  );
+  const toggleDebug = () => {
+    setDebug((d) => !d);
+    setMasksOff(false);
+  };
+  const copyFrame = () => {
+    if (!tracks) return;
+    const text = debugFrameText(id, frame, tracks.fps, debugBoxesAt(frame, tracks, edits, Object.values(manualDocs)));
+    const flash = (label: string) => {
+      setCopyLabel(label);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopyLabel(undefined), 1500);
+    };
+    try {
+      Promise.resolve(navigator.clipboard?.writeText(text)).then(() => flash('복사됨'), () => flash('복사 실패'));
+    } catch {
+      flash('복사 실패');
+    }
+  };
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
 
   // the focused item; falls back to the first unresolved one (e.g. after the active item was resolved elsewhere).
   // A crossing being split (or marked not-a-face) stays active even if the split already made it non-required.
@@ -929,6 +958,10 @@ export function Studio() {
       case 'B':
         toggleBox();
         break;
+      case 'd':
+      case 'D':
+        toggleDebug();
+        break;
       case ' ':
         // always play/pause (even on a focused button or the timeline) so a mouse-clicked
         // 괜찮음 is never pressed again by Space; preventDefault also blocks the native click
@@ -1196,6 +1229,8 @@ export function Studio() {
             background={background}
             highlight={highlight}
             focusBoxes={focusBoxes}
+            debugBoxes={debug ? debugBoxesFn : undefined}
+            masksOff={debug && masksOff}
             onFrame={setFrame}
           >
             {(rect) =>
@@ -1237,6 +1272,12 @@ export function Studio() {
             onTogglePlay={togglePlay}
             onSeek={seek}
             onStep={stepFrame}
+            debug={debug}
+            onToggleDebug={toggleDebug}
+            masksOff={masksOff}
+            onToggleMasks={() => setMasksOff((m) => !m)}
+            onCopyFrame={copyFrame}
+            copyLabel={copyLabel}
           />
           <Timeline
             person={current}

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type ReactNode, type Re
 import { frameAt } from '../lib/frames';
 import { containRect, toDisplay, type Rect } from '../lib/geometry';
 import { drawFrameEffects } from '../lib/effects';
+import { debugTime, type DebugBox, type DebugKind } from '../lib/debugBoxes';
 import type { Box, Effect, Region } from '../lib/types';
 
 export interface Highlight {
@@ -24,9 +25,20 @@ interface Props {
   /** outline of the selected person at a frame (source pixels) */
   focusBoxes: (frame: number) => Box[];
   onFrame: (frame: number) => void;
+  /** detector/manual boxes to outline at a frame (preview-only debug overlay) */
+  debugBoxes?: (frame: number) => DebugBox[];
+  /** preview-only: show the raw video without mosaic */
+  masksOff?: boolean;
   /** rendered over the video (e.g. the box drawing tool); receives the content rect */
   children?: (rect: Rect) => ReactNode;
 }
+
+const DEBUG_COLOR: Record<DebugKind, string> = {
+  detected: '#22C55E',
+  held: '#F59E0B',
+  suspect: '#EF4444',
+  manual: '#3B82F6',
+};
 
 function PlayerOverlayInner(props: Props) {
   const { src, videoRef, srcW, srcH, fps, frame, children } = props;
@@ -64,7 +76,7 @@ function PlayerOverlayInner(props: Props) {
       height: v.videoHeight,
       ready: v.readyState >= 2 && !!v.videoWidth,
     };
-    drawFrameEffects(ctx, src, offRef.current, p.regions.get(f) ?? [], p.background, r, p.srcW, p.srcH);
+    drawFrameEffects(ctx, src, offRef.current, p.masksOff ? [] : (p.regions.get(f) ?? []), p.masksOff ? null : p.background, r, p.srcW, p.srcH);
 
     for (const fb of p.focusBoxes(f)) {
       const [dx, dy, dw, dh] = toDisplay(fb, p.srcW, p.srcH, r.w, r.h);
@@ -85,6 +97,35 @@ function PlayerOverlayInner(props: Props) {
       ctx.strokeStyle = '#F5A524';
       ctx.strokeRect(r.x + dx, r.y + dy, dw, dh);
       ctx.setLineDash([]);
+    }
+    if (p.debugBoxes) {
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textBaseline = 'middle';
+      for (const b of p.debugBoxes(f)) {
+        const color = DEBUG_COLOR[b.kind];
+        const [dx, dy, dw, dh] = toDisplay(b.box, p.srcW, p.srcH, r.w, r.h);
+        const bx = r.x + dx;
+        const by = r.y + dy;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = color;
+        // dashed = no detection in this frame (held/filled), also for suspect tracks
+        ctx.setLineDash(b.kind !== 'manual' && b.score === null ? [6, 4] : []);
+        ctx.strokeRect(bx, by, dw, dh);
+        ctx.setLineDash([]);
+        const tw = ctx.measureText(b.label).width + 6;
+        const th = 18;
+        const ty = by - th >= r.y ? by - th : by + dh;
+        ctx.fillStyle = color;
+        ctx.fillRect(bx, ty, tw, th);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(b.label, bx + 3, ty + th / 2);
+      }
+      const tag = `f ${f} · ${debugTime(f, p.fps)}`;
+      const tagW = ctx.measureText(tag).width + 10;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(r.x + 6, r.y + 6, tagW, 20);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(tag, r.x + 11, r.y + 16);
     }
   }, [videoRef]);
 
@@ -155,7 +196,7 @@ function PlayerOverlayInner(props: Props) {
     const v = videoRef.current;
     if (v && v.paused) mediaTime.current = frame / fps;
     draw();
-  }, [props.regions, props.background, props.highlight, props.focusBoxes, frame, fps, draw, videoRef]);
+  }, [props.regions, props.background, props.highlight, props.focusBoxes, props.debugBoxes, props.masksOff, frame, fps, draw, videoRef]);
 
   return (
     <div className="player" ref={wrapRef} data-testid="player">

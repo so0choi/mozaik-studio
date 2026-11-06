@@ -14,6 +14,14 @@ interface Props {
   onSeek: (frame: number) => void;
   /** step the playhead by whole frames (pauses first) */
   onStep: (delta: number) => void;
+  /** preview-only detection-box debug overlay */
+  debug?: boolean;
+  onToggleDebug?: () => void;
+  masksOff?: boolean;
+  onToggleMasks?: () => void;
+  onCopyFrame?: () => void;
+  /** transient label for the copy button (e.g. 복사됨) */
+  copyLabel?: string;
 }
 
 const Icon = ({ d }: { d: string }) => (
@@ -81,6 +89,29 @@ function PlayerControlsInner(p: Props) {
         </div>
       </div>
       <div className="pb-right">
+        {p.onToggleDebug && (
+          <>
+            <button type="button" className="dbg" aria-pressed={!!p.debug} title="검출 박스 보기 (D)" onClick={p.onToggleDebug}>
+              검출 박스
+            </button>
+            {p.debug && (
+              <>
+                <button
+                  type="button"
+                  className="dbg"
+                  aria-pressed={!!p.masksOff}
+                  title="미리보기에서만 모자이크를 끕니다. 결과 영상에는 영향 없음"
+                  onClick={p.onToggleMasks}
+                >
+                  모자이크 끄기
+                </button>
+                <button type="button" className="dbg" onClick={p.onCopyFrame}>
+                  {p.copyLabel ?? '프레임 정보 복사'}
+                </button>
+              </>
+            )}
+          </>
+        )}
         <button
           type="button"
           className="ic"
