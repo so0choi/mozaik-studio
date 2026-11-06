@@ -220,6 +220,8 @@ def main():
     ap.add_argument("--no-video", action="store_true")
     ap.add_argument("--extend-skip", choices=["nonface", "suspect"], default="nonface",
                     help="experiment: which tracks skip inner-hold/bridge/leading (production: nonface)")
+    ap.add_argument("--bridge-skip-suspect", action="store_true",
+                    help="experiment: suspect tracks are not bridged (inner-hold/leading unchanged)")
     ap.add_argument("--suspect-hold", type=int, default=-1,
                     help="experiment: keep at most N held frames after each real detection of suspect tracks (-1 = production)")
     ap.add_argument("--dump-features", help="write per-track clues (landmarks, crop re-check, person gate) here")
@@ -348,7 +350,7 @@ def main():
         s_trim = cut_tr
     ext_skip = nonface if a.extend_skip == "nonface" else set(suspects) | set(nonface)
     s_inner = L.cover_inner_holds(s_trim, cuts, skip=ext_skip)
-    s_bridge = L.bridge_gaps(s_inner, fps, cuts, skip=ext_skip)
+    s_bridge = L.bridge_gaps(s_inner, fps, cuts, skip=(set(ext_skip) | set(suspects)) if a.bridge_skip_suspect else ext_skip)
     s_lead = L.cover_leading(s_bridge, fps, cuts, skip=ext_skip)
     bucket = J.bucket_ids([t.id for t in s_lead], suspects, states)
 
