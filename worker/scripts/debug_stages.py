@@ -72,6 +72,41 @@ def r(v, n=1):
     return [round(float(x), n) for x in v]
 
 
+# ---------------------------------------------------------------- A+: YuNet with landmarks kept
+class LandmarkDetector(D.FaceDetector):
+    """Same output as FaceDetector.detect; also remembers YuNet's 5 landmarks per returned Detection."""
+
+    def __init__(self):
+        super().__init__()
+        self.landmarks: dict[int, list[float]] = {}  # id(Detection) -> [rex, rey, lex, ley, nx, ny, rmx, rmy, lmx, lmy]
+
+    def detect(self, frame):
+        h, w = frame.shape[:2]
+        scale = 1.0
+        img = frame
+        short = min(h, w)
+        if short > D.MAX_SHORT_SIDE:
+            scale = D.MAX_SHORT_SIDE / short
+            img = cv2.resize(frame, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA)
+        ih, iw = img.shape[:2]
+        self._det.setInputSize((iw, ih))
+        _, faces = self._det.detect(img)
+        out = []
+        self.landmarks = {}
+        if faces is None:
+            return out
+        for row in faces:
+            x, y, bw, bh = (float(v) / scale for v in row[:4])
+            x0, y0 = max(0, int(round(x))), max(0, int(round(y)))
+            x1, y1 = min(w, int(round(x + bw))), min(h, int(round(y + bh)))
+            if x1 - x0 < 1 or y1 - y0 < 1:
+                continue
+            det = D.Detection((x0, y0, x1 - x0, y1 - y0), float(row[-1]))
+            self.landmarks[id(det)] = [round(float(v) / scale, 1) for v in row[4:14]]
+            out.append(det)
+        return out
+
+
 # ---------------------------------------------------------------- B: NanoDet, all classes
 def nanodet_raw(det: P.PersonDetector, frame: np.ndarray, min_score: float):
     """Same preprocessing/decoding as person.PersonDetector.detect, but keeps every class (argmax)."""
@@ -187,6 +222,7 @@ def main():
                     help="experiment: which tracks skip inner-hold/bridge/leading (production: nonface)")
     ap.add_argument("--suspect-hold", type=int, default=-1,
                     help="experiment: keep at most N held frames after each real detection of suspect tracks (-1 = production)")
+    ap.add_argument("--dump-features", help="write per-track clues (landmarks, crop re-check, person gate) here")
     ap.add_argument("--dump-tracks", help="write the replayed final tracks doc (whole decoded range) here")
     a = ap.parse_args()
 
@@ -202,7 +238,8 @@ def main():
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     stop = n_frames if a.full else min(n_frames, a.end + 2 * fps + 1)
 
-    detector = D.FaceDetector()
+    detector = LandmarkDetector() if a.dump_features else D.FaceDetector()
+    obs: dict[str, list] = {}  # pre-link track id -> [(frame, score, box, landmarks)]
     pdet = P.PersonDetector()
     tracker = T.Tracker(fps, frame_size=(W, H))
     verifier = V.TrackVerifier()
@@ -230,6 +267,9 @@ def main():
         yms = (time.perf_counter() - t1) * 1000
         before = {tr.id for tr in tracker._active}
         assigned = tracker.update(idx, dets)
+        if a.dump_features:
+            for tid, d in assigned.items():
+                obs.setdefault(tid, []).append([idx, round(d.score, 4), list(d.box), detector.landmarks.get(id(d))])
         verifier.observe(frame, assigned)
         gate.observe(idx, frame, assigned)
         scene.observe(idx, frame)
@@ -371,6 +411,16 @@ def main():
                          "region_box_frame": b, "shape": reg["shape"],
                          "ui_box_display": r([ox + b[0] * sc, oy + b[1] * sc, b[2] * sc, b[3] * sc])})
 
+    if a.dump_features:
+        feats = {}
+        for kept, parts in groups.items():
+            feats[kept] = {"parts": parts, "suspect": kept in suspects, "nonface": kept in nonface,
+                           "person": states.get(kept), "bucket": kept in bucket,
+                           "crop_best": max((verifier._best.get(p, -1.0) for p in parts), default=-1.0),
+                           "crop_checks": sum(verifier._checks.get(p, 0) for p in parts),
+                           "confident": any(p in verifier._confident for p in parts),
+                           "obs": [o for p in parts for o in obs.get(p, [])]}
+        Path(a.dump_features).write_text(json.dumps(feats))
     if a.dump_tracks:
         Path(a.dump_tracks).write_text(json.dumps({**doc, "cuts": sorted(cuts)}))
     with open(out / "boxes.jsonl", "w") as fh:

@@ -36,6 +36,34 @@ def mask_at(doc: dict, vis: set, f: int, W: int, H: int) -> np.ndarray:
     return m
 
 
+def apply_relabel(sheet: dict, labels: dict, relabel: dict) -> dict:
+    """Policy 2026-11-05: a covered face (mask, balaclava, cap pulled down) must be masked.
+    head -> box answer becomes face / wrong-mask click is withdrawn (mask stays required); unsure -> answer dropped."""
+    cls = {(r["item"], r["track"]): r["class"] for r in relabel["instances"]}
+    out = json.loads(json.dumps(labels))
+    for it in sheet["items"]:
+        a = out.get(it["id"])
+        if not a:
+            continue
+        if it["task"] == "box" and a.get("label") == "not_face":
+            c = cls.get((it["id"], it["meta"]["track"]))
+            if c == "head":
+                a["label"] = "face"
+            elif c == "unsure":
+                a["label"] = "unsure"
+        if it["task"] == "miss" and a.get("v") == 2:
+            keep, drop = [], set()
+            for w in a.get("wrong") or []:
+                c = cls.get((it["id"], w["id"]))
+                if c == "not" or c is None:
+                    keep.append(w)
+                elif c == "unsure":
+                    drop.add(w["id"])
+            a["wrong"], a["wrong_points"] = keep, [w["point"] for w in keep]
+            a["skip_ids"] = sorted(drop)  # unsure: neither required nor wrong
+    return out
+
+
 def score(sheet: dict, labels: dict, doc: dict, vis: set) -> dict:
     W, H = sheet["width"], sheet["height"]
     cuts = set(doc.get("cuts") or [])
@@ -82,7 +110,7 @@ def score(sheet: dict, labels: dict, doc: dict, vis: set) -> dict:
                     r["nonfaces_masked"].append(f"{it['id']}@{f}")
         elif it["task"] == "miss":
             if ans.get("v") == 2:  # every drawn mask the labeler did not mark wrong must stay covered
-                wrong_ids = {w["id"] for w in ans.get("wrong") or []}
+                wrong_ids = {w["id"] for w in ans.get("wrong") or []} | set(ans.get("skip_ids") or [])
                 for e in it.get("ellipses") or []:
                     if e["id"] in wrong_ids:
                         continue
@@ -109,11 +137,14 @@ def main():
     ap.add_argument("sheet")
     ap.add_argument("--tracks", action="append", required=True)
     ap.add_argument("--edits", required=True)
+    ap.add_argument("--relabel", help="relabel_*.json: not-face answers re-sorted into head (must stay masked) / not / unsure")
     a = ap.parse_args()
     sheet = json.loads((Path(a.sheet) / "items.json").read_text())
     lp = Path(a.sheet) / "labels.json"
     labels = json.loads(lp.read_text()) if lp.exists() else {}
     vis = set(json.loads(Path(a.edits).read_text()).get("visible") or [])
+    if a.relabel:
+        labels = apply_relabel(sheet, labels, json.loads(Path(a.relabel).read_text()))
     rows = {}
     for t in a.tracks:
         r = score(sheet, labels, json.loads(Path(t).read_text()), vis)

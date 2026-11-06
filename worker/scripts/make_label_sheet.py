@@ -30,6 +30,7 @@ from mosaic_worker.shapes import face_ellipse_box  # noqa: E402
 YELLOW, MAGENTA = (0, 255, 255), (255, 0, 255)
 # strata: (name, how many) — kept small so the whole sheet takes ~15 minutes
 BOX_PLAN = [("real_high", 15), ("real_low", 25), ("held", 25), ("leading", 15), ("suspect", 20), ("removed_by_fix", 10)]
+BIG_FACE = 30  # px, raw (unexpanded) median box width; "suspect_big" = suspect tracks a size-gated check would act on
 N_MISS = 30
 N_CUT_CONTROLS = 6  # cuts the current rule already finds clearly, as a sanity check of the labeler
 
@@ -62,6 +63,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--title", default="")
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--plan", help='JSON list of [stratum, count] to replace BOX_PLAN, e.g. [["suspect_big",30],["held",15]]')
     a = ap.parse_args()
 
     rng = random.Random(a.seed)
@@ -72,15 +74,22 @@ def main():
     (out / "img").mkdir(parents=True, exist_ok=True)
 
     # ---------------- box candidates
-    pools: dict[str, list] = {k: [] for k, _ in BOX_PLAN}
+    plan = [tuple(x) for x in json.loads(a.plan)] if a.plan else BOX_PLAN
+    pools: dict[str, list] = {k: [] for k, _ in plan}
+    split_big = any(name == "suspect_big" for name, _ in plan)  # default plan keeps the original single suspect pool
+    pools.setdefault("suspect", []); pools.setdefault("suspect_big", []); pools.setdefault("removed_by_fix", [])
+    for k in ("real_high", "real_low", "held", "leading"):
+        pools.setdefault(k, [])
     for t in doc["tracks"]:
         flagged = t.get("suspect") or t.get("nonface")
+        real_w = sorted(t["frames"][f][2] / 1.25 for f in t["scores"] if f in t["frames"])
+        big = bool(real_w) and real_w[len(real_w) // 2] >= BIG_FACE
         for fs, b in t["frames"].items():
             f = int(fs)
             src = box_source(t, f)
             cand = {"frame": f, "box": b, "track": t["id"], "source": src, "flagged": bool(flagged),
                     "visible": t["id"] in vis, "score": t["scores"].get(fs)}
-            pools["suspect" if flagged else src].append(cand)
+            pools[("suspect_big" if big and split_big else "suspect") if flagged else src].append(cand)
     if a.base_tracks:
         base = json.loads(Path(a.base_tracks).read_text())
         now = {(t["id"], f) for t in doc["tracks"] for f in t["frames"]}
@@ -93,7 +102,7 @@ def main():
 
     picked: list[dict] = []
     per_track: dict[str, int] = {}
-    for name, k in BOX_PLAN:
+    for name, k in plan:
         pool = pools[name][:]
         rng.shuffle(pool)
         got = 0
