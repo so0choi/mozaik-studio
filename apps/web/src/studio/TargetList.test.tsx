@@ -253,3 +253,59 @@ describe('TargetList suspect tiles', () => {
     expect(ck('s1')).toHaveAttribute('aria-checked', 'true');
   });
 });
+
+describe('TargetList scene filter', () => {
+  afterEach(cleanup);
+  const A = person('a', { suspect: true, nonface: true, segments: [[10, 20]] });
+  const B = person('b', { suspect: true, nonface: true, segments: [[100, 120]] });
+  const open = async () => userEvent.click(screen.getByRole('button', { name: /얼굴 아닐 수 있음/ }));
+  const chip = () => screen.getByTestId('scene-filter');
+
+  it('has no chip without getFrame', async () => {
+    render(base([A, B]));
+    await open();
+    expect(screen.queryByTestId('scene-filter')).toBeNull();
+  });
+
+  it('filters tiles to those with a segment at the frame and shows the time', async () => {
+    render(base([A, B], { getFrame: () => 15, fps: 5 }));
+    await open();
+    expect(chip()).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(chip());
+    expect(chip()).toHaveAttribute('aria-pressed', 'true');
+    expect(chip()).toHaveTextContent('00:03 장면');
+    expect(screen.getByTestId('card-a')).toBeInTheDocument();
+    expect(screen.queryByTestId('card-b')).toBeNull();
+  });
+
+  it('bulk button counts only filtered tiles', async () => {
+    render(base([A, B], { getFrame: () => 15, fps: 5 }));
+    await open();
+    expect(screen.getByRole('button', { name: '선택한 2개 가림 해제' })).toBeInTheDocument();
+    await userEvent.click(chip());
+    expect(screen.getByRole('button', { name: '선택한 1개 가림 해제' })).toBeInTheDocument();
+  });
+
+  it('clicking again restores all', async () => {
+    render(base([A, B], { getFrame: () => 15, fps: 5 }));
+    await open();
+    await userEvent.click(chip());
+    await userEvent.click(chip());
+    expect(chip()).toHaveTextContent('이 장면만');
+    expect(screen.getByTestId('card-a')).toBeInTheDocument();
+    expect(screen.getByTestId('card-b')).toBeInTheDocument();
+  });
+
+  it('segment end is inclusive and empty state has its own text', async () => {
+    const { unmount } = render(base([A, B], { getFrame: () => 20 }));
+    await open();
+    await userEvent.click(chip());
+    expect(screen.getByTestId('card-a')).toBeInTheDocument();
+    unmount();
+    render(base([A, B], { getFrame: () => 21 }));
+    await open();
+    await userEvent.click(chip());
+    expect(screen.queryByTestId('card-a')).toBeNull();
+    expect(screen.getByText('이 장면에 해당하는 항목이 없습니다.')).toBeInTheDocument();
+  });
+});

@@ -1220,6 +1220,36 @@ describe('Studio mask picker', () => {
       else delete proto.clientHeight;
     }
   });
+  it('Delete unmasks the picked piece; ignored while typing in an input', async () => {
+    setup();
+    await card('t1');
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const orig = [Object.getOwnPropertyDescriptor(proto, 'clientWidth'), Object.getOwnPropertyDescriptor(proto, 'clientHeight')];
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 640 });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 360 });
+    try {
+      fireEvent(window, new Event('resize'));
+      const layer = await screen.findByTestId('maskpicker');
+      layer.getBoundingClientRect = () => ({ left: 0, top: 0, right: 640, bottom: 360, width: 640, height: 360, x: 0, y: 0, toJSON: () => ({}) });
+      fireEvent.click(layer, { clientX: 120, clientY: 120 });
+      await screen.findByTestId('unmask-x');
+      const sw = () => within(screen.getByTestId('card-t1')).getByRole('switch', { name: '인물 1 보임 전환' });
+      const search = screen.getByRole('searchbox', { name: '인물 검색' });
+      search.focus();
+      await userEvent.keyboard('{Delete}');
+      expect(sw()).toHaveAttribute('aria-checked', 'false');
+      (document.activeElement as HTMLElement).blur();
+      await userEvent.keyboard('{Delete}');
+      expect(sw()).toHaveAttribute('aria-checked', 'true');
+      expect(screen.queryByTestId('unmask-x')).toBeNull();
+      expect(screen.getByText('가림을 해제했습니다 · Ctrl+Z로 되돌리기')).toBeInTheDocument();
+    } finally {
+      if (orig[0]) Object.defineProperty(proto, 'clientWidth', orig[0]);
+      else delete proto.clientWidth;
+      if (orig[1]) Object.defineProperty(proto, 'clientHeight', orig[1]);
+      else delete proto.clientHeight;
+    }
+  });
 });
 
 describe('Studio canvas selection reveals the list row', () => {

@@ -85,6 +85,9 @@ export function Studio() {
   const [manualState, setManualState] = useState<Record<string, ManualState>>({});
   const [reviewManual, setReviewManual] = useState<Record<string, string>>({});
   const [frame, setFrame] = useState(0);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+  const getFrame = useCallback(() => frameRef.current, []);
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -923,6 +926,11 @@ export function Studio() {
     const canAct = !!activeItem && !manualOpenEdit && !itemTracking;
     let handled = true;
     switch (e.key) {
+      case 'Delete':
+      case 'Backspace':
+        if (!pickedId) return;
+        unmaskRegion(pickedId);
+        break;
       case 'Enter':
         if (onControl || !canAct) return;
         if (e.shiftKey) {
@@ -1307,6 +1315,8 @@ export function Studio() {
         </section>
         <aside className="rightcol" aria-label="블러 대상">
           <TargetList
+            getFrame={getFrame}
+            fps={fps}
             people={peopleList}
             selected={selected}
             currentKey={currentKey}
