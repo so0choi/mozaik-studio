@@ -44,6 +44,42 @@ def nonface_ids(suspects, states: dict[str, str]) -> set[str]:
     return {t for t in suspects if states.get(t) == "no_support"}
 
 
+# A flagged box that YuNet found only a few times and that is far larger than the other faces on screen is a
+# body part read as a face (pexels-9003393 31 s: a chest, 3.6x). Measured on three labeled videos: at 3.5x all
+# 3 such boxes were non-faces; the closest real face (capped and masked, like-jennie 114 s) sat at 2.99x.
+OVERSIZE_RATIO = 3.5
+OVERSIZE_MAX_REAL = 3
+
+
+def oversized_suspect_ids(tracks, flagged, skip=frozenset()) -> set[str]:
+    """Flagged tracks with at most OVERSIZE_MAX_REAL detections whose median box is >= OVERSIZE_RATIO times the
+    median width of the other masked faces detected on the same frames. No other face there: never counts."""
+    widths: dict[int, list[tuple[str, int]]] = {}
+    for t in tracks:
+        if t.id in skip:
+            continue
+        for f in t.scores:
+            if f in t.frames:
+                widths.setdefault(f, []).append((t.id, t.frames[f][2]))
+    out = set()
+    for t in tracks:
+        if t.id not in flagged or t.id in skip or not 0 < len(t.scores) <= OVERSIZE_MAX_REAL:
+            continue
+        reals = [f for f in t.scores if f in t.frames]
+        others = sorted(w for f in reals for tid, w in widths.get(f, []) if tid != t.id)
+        if not reals or not others:
+            continue
+        own = sorted(t.frames[f][2] for f in reals)
+        if _median(own) >= OVERSIZE_RATIO * _median(others):
+            out.add(t.id)
+    return out
+
+
+def _median(xs: list) -> float:
+    n = len(xs)
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+
 def seed_unmasked(job_dir: Path, ids) -> None:
     """Add likely non-faces to edits.visible so they start unmasked; keeps every other edit."""
     from .render import _read_json, default_edits
@@ -151,6 +187,8 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     tracks, thumbs, suspects, cuts, person_states = detect_and_track(job_dir / "normalized.mp4", meta, detector, progress, person_detector)
     info = thumbs.write([t.id for t in tracks], job_dir)
     nonface = nonface_ids(suspects, person_states)
+    flagged = bucket_ids([t.id for t in tracks], suspects, person_states)
+    nonface |= oversized_suspect_ids(tracks, flagged, skip=nonface)
     likely = likely_face_ids([t.id for t in tracks], suspects, person_states)
     # after suspects/nonface are known: likely non-faces must not get their masks extended
     tracks = cover_inner_holds(tracks, cuts, skip=nonface)
