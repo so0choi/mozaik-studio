@@ -90,6 +90,21 @@ def _severity(track: Track, suspects) -> str:
     return "required"
 
 
+def _handed_off_next_frame(track: Track, end: int, starters) -> bool:
+    """A track starts its first detection on the frame right after `end`, within one face side of the last box."""
+    box = track.frames.get(end)
+    if box is None:
+        return False
+    cx, cy, side = box[0] + box[2] / 2, box[1] + box[3] / 2, max(box[2], box[3])
+    for u in starters:
+        if u is track or end + 1 not in u.frames:
+            continue
+        ub = u.frames[end + 1]
+        if ((ub[0] + ub[2] / 2 - cx) ** 2 + (ub[1] + ub[3] / 2 - cy) ** 2) ** 0.5 <= side:
+            return True
+    return False
+
+
 def _inside(inner, outer) -> bool:
     return (
         inner[0] >= outer[0] and inner[1] >= outer[1]
@@ -139,7 +154,12 @@ def build_review(tracks: list[Track], fps: int, frame_size=None, frame_count: in
                 n = min(f for f in real if f > b)
                 if _inside(t.frames[n], t.frames[b]):
                     continue
-            add("gap", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]], _severity(t, suspects))
+            sev = _severity(t, suspects)
+            # Masked without a break until a nearby new track takes over (bridge_gaps): the only risk left is the
+            # interpolated box drifting off the face, so it is listed for reference, not required.
+            if trailing and sev == "required" and _handed_off_next_frame(t, b, first_real.get(b + 1, ())):
+                sev = "advisory"
+            add("gap", [t.id], a, b, lambda m, t=t: [t.frames[min(t.frames, key=lambda f: abs(f - m))]], sev)
 
     per_frame: dict[int, list[tuple[str, tuple]]] = {}
     for t in tracks:

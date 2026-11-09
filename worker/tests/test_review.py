@@ -291,3 +291,20 @@ def test_likely_faces_crossing_needs_both_tracks():
     assert both == ["required"]
     assert sev({"t1"}) == ["advisory"]
     assert sev(set()) == ["advisory"]
+
+
+def test_trailing_gap_bridged_into_nearby_track_is_advisory():
+    # held/bridged box runs to frame 14; a new track starts right after (15) close by but not inside it
+    t = mk("t1", range(0, 15), box=(100, 100, 50, 50), held=range(10, 15))
+    t.frames.update({f: HOLD for f in range(10, 15)})
+    u = other_track(15, (150, 105, 50, 50))
+    g = gaps(build_review([t, u], 30, frame_size=SIZE, frame_count=300, cuts=set())["items"])
+    assert len(g) == 1 and g[0]["severity"] == "advisory"
+
+
+def test_trailing_gap_with_far_track_starting_next_frame_stays_required():
+    t = mk("t1", range(0, 15), box=(100, 100, 50, 50), held=range(10, 15))
+    t.frames.update({f: HOLD for f in range(10, 15)})
+    u = other_track(15, (450, 105, 50, 50))  # unrelated face elsewhere
+    g = gaps(build_review([t, u], 30, frame_size=SIZE, frame_count=300, cuts=set())["items"])
+    assert len(g) == 1 and g[0]["severity"] == "required"

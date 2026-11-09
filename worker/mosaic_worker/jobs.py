@@ -10,10 +10,10 @@ from .detect import FaceDetector
 from .link import bridge_gaps, cover_inner_holds, cover_leading, link_fragments, trim_holds_at_cuts
 from .normalize import Meta, find_original, normalize
 from .person import PersonGate
-from .review import build_review
+from .review import CROSS_IOU, _crossing_boxes, build_review
 from .status import MSG_ANALYZE_FAILED, UserFacingError, atomic_write_json
 from .thumbs import ThumbCollector
-from .tracker import Tracker, block_size, to_segments
+from .tracker import Tracker, block_size, iou, to_segments
 from .scenecut import SceneCuts
 from .verify import TrackVerifier
 
@@ -92,6 +92,31 @@ def seed_unmasked(job_dir: Path, ids) -> None:
     visible += sorted(set(ids) - set(visible), key=lambda t: int(t[1:]) if t[1:].isdigit() else 0)
     edits["visible"] = visible
     atomic_write_json(path, edits)
+
+
+def crossing_masked(tracks, unmask: set[str]) -> set[str]:
+    """Ids in `unmask` whose box ever overlaps (review's crossing rule) a track that stays masked.
+
+    Unmasking such a track would make that crossing a required review item (a tracker id swap there could
+    leave the unmasked track on a real face), so it stays masked; it is still pre-checked in the UI.
+    """
+    boxes = {t.id: _crossing_boxes(t) for t in tracks}
+    by_frame: dict[int, list[str]] = {}
+    for tid, fb in boxes.items():
+        for f in fb:
+            by_frame.setdefault(f, []).append(tid)
+    out: set[str] = set()
+    while True:  # keeping one masked can create a new masked/unmasked crossing with another: repeat until stable
+        added = False
+        for f, ids in by_frame.items():
+            for a in ids:
+                if a not in unmask or a in out:
+                    continue
+                if any((b not in unmask or b in out) and iou(boxes[a][f], boxes[b][f]) > CROSS_IOU for b in ids if b != a):
+                    out.add(a)
+                    added = True
+        if not added:
+            return out
 
 
 def bucket_ids(track_ids, suspects, states: dict[str, str]) -> set[str]:
@@ -197,7 +222,7 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     bucket = bucket_ids([t.id for t in tracks], suspects, person_states)
     atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, bucket, nonface))
     atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps, (meta.width, meta.height), meta.frame_count, cuts, suspects, likely))
-    seed_unmasked(job_dir, nonface)
+    seed_unmasked(job_dir, nonface - crossing_masked(tracks, nonface))
     if progress:
         progress("analyzing", 100)
 

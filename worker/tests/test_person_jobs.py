@@ -77,3 +77,23 @@ def test_seed_unmasked_noop_without_ids(tmp_path):
 
     seed_unmasked(tmp_path, set())
     assert not (tmp_path / "edits.json").exists()
+
+
+def test_crossing_masked_keeps_nonface_that_touches_a_masked_track():
+    from mosaic_worker.jobs import crossing_masked
+
+    face = Track("f", {f: (100, 100, 50, 50) for f in range(10)}, {f: 0.9 for f in range(10)}, set())
+    touching = Track("n1", {f: (120, 110, 50, 50) for f in range(5, 8)}, {f: 0.7 for f in range(5, 8)}, set())
+    apart = Track("n2", {f: (400, 100, 50, 50) for f in range(10)}, {f: 0.7 for f in range(10)}, set())
+    other_nonface = Track("n3", {f: (400, 110, 50, 50) for f in range(10)}, {f: 0.7 for f in range(10)}, set())
+    # n2 and n3 overlap each other but both get unmasked, so that crossing never needs review
+    assert crossing_masked([face, touching, apart, other_nonface], {"n1", "n2", "n3"}) == {"n1"}
+
+
+def test_crossing_masked_propagates_through_chains():
+    from mosaic_worker.jobs import crossing_masked
+
+    face = Track("f", {0: (100, 100, 50, 50)}, {0: 0.9}, set())
+    n1 = Track("n1", {0: (110, 100, 50, 50), 5: (300, 100, 50, 50)}, {0: 0.7, 5: 0.7}, set())
+    n2 = Track("n2", {5: (310, 100, 50, 50)}, {5: 0.7}, set())  # touches only n1, which must stay masked
+    assert crossing_masked([face, n1, n2], {"n1", "n2"}) == {"n1", "n2"}
