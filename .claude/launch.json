@@ -1,0 +1,52 @@
+{
+ "version": "0.0.1",
+ "configurations": [
+  {
+   "name": "studio-mockups",
+   "runtimeExecutable": "python3",
+   "runtimeArgs": [
+    "-m",
+    "http.server",
+    "8766",
+    "--directory",
+    "/Users/sychoi/.gstack/projects/face-mosaic-studio/designs/studio-review-layout-20261030"
+   ],
+   "port": 8766
+  },
+  {
+   "name": "web-dev",
+   "runtimeExecutable": "pnpm",
+   "runtimeArgs": [
+    "--dir",
+    "apps/web",
+    "exec",
+    "vite",
+    "--port",
+    "5173"
+   ],
+   "port": 5173
+  },
+  {
+   "name": "label-tool",
+   "runtimeExecutable": "python3",
+   "runtimeArgs": [
+    "worker/scripts/label_server.py",
+    "test-media/labels/like-jennie",
+    "--port",
+    "8765"
+   ],
+   "port": 8765
+  },
+  {
+   "name": "label-tool-paris",
+   "runtimeExecutable": "python3",
+   "runtimeArgs": [
+    "worker/scripts/label_server.py",
+    "test-media/labels/paris-3min",
+    "--port",
+    "8767"
+   ],
+   "port": 8767
+  }
+ ]
+}

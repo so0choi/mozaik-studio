@@ -241,3 +241,42 @@ def cover_leading(tracks: list[Track], fps: int, cuts=frozenset(), skip=frozense
             frames[f] = t.frames[s]
         out.append(Track(t.id, frames, dict(t.scores), {f for f in frames if f not in t.scores}))
     return out
+
+
+# measured 2026-11-10 on like-jennie/paris human label sheets: wrong masks 69->32 / 19->11 with all four rules,
+# no labeled visible face exposed; unseen students/paris-ep5: visible faces unchanged.
+SUSPECT_TAIL_SEC = 0.25
+_CONT_SLACK = 3
+
+
+def _overlap(a: Box, b: Box) -> bool:
+    return min(a[0] + a[2], b[0] + b[2]) > max(a[0], b[0]) and min(a[1] + a[3], b[1] + b[3]) > max(a[1], b[1])
+
+
+def trim_suspect_tails(tracks: list[Track], fps: int, flagged, tail_sec: float = SUSPECT_TAIL_SEC) -> list[Track]:
+    """Flagged ("may not be a face") tracks keep at most tail_sec of hold after their last detection, unless
+    another track starts right there on the same spot (a continuation of the same face)."""
+    tail = round(tail_sec * fps)
+    out: list[Track] = []
+    for t in tracks:
+        if t.id not in flagged or not t.scores or not t.frames:
+            out.append(t)
+            continue
+        last_real, last = max(t.scores), max(t.frames)
+        if last <= last_real + tail:
+            out.append(t)
+            continue
+        cont = False
+        for o in tracks:
+            if o is t or not o.frames:
+                continue
+            s0 = min(o.frames)
+            if last_real < s0 <= last + _CONT_SLACK and _overlap(o.frames[s0], t.frames[last]):
+                cont = True
+                break
+        if cont:
+            out.append(t)
+            continue
+        frames = {f: b for f, b in t.frames.items() if f <= last_real + tail}
+        out.append(Track(t.id, frames, dict(t.scores), {f for f in frames if f not in t.scores}))
+    return out

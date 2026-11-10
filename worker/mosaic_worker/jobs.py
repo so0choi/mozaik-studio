@@ -7,7 +7,8 @@ from typing import Callable
 import cv2
 
 from .detect import FaceDetector
-from .link import bridge_gaps, cover_inner_holds, cover_leading, link_fragments, trim_holds_at_cuts
+from .holdcheck import drop_unlike_holds, hold_features
+from .link import bridge_gaps, cover_inner_holds, cover_leading, link_fragments, trim_holds_at_cuts, trim_suspect_tails
 from .normalize import Meta, find_original, normalize
 from .person import PersonGate
 from .review import CROSS_IOU, _crossing_boxes, build_review
@@ -73,6 +74,13 @@ def oversized_suspect_ids(tracks, flagged, skip=frozenset()) -> set[str]:
         if _median(own) >= OVERSIZE_RATIO * _median(others):
             out.add(t.id)
     return out
+
+
+def one_hit_suspect_ids(tracks, flagged) -> set[str]:
+    """Flagged tracks with a single real detection are likely non-faces (measured 2026-11-10 on like-jennie/paris
+    human label sheets: wrong masks 69->32 / 19->11 with all four rules, no labeled visible face exposed;
+    unseen students/paris-ep5: visible faces unchanged)."""
+    return {t.id for t in tracks if t.id in flagged and len(t.scores) < 2}
 
 
 def _median(xs: list) -> float:
@@ -214,11 +222,15 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     nonface = nonface_ids(suspects, person_states)
     flagged = bucket_ids([t.id for t in tracks], suspects, person_states)
     nonface |= oversized_suspect_ids(tracks, flagged, skip=nonface)
+    nonface |= one_hit_suspect_ids(tracks, flagged)
     likely = likely_face_ids([t.id for t in tracks], suspects, person_states)
     # after suspects/nonface are known: likely non-faces must not get their masks extended
     tracks = cover_inner_holds(tracks, cuts, skip=nonface)
     tracks = bridge_gaps(tracks, meta.fps, cuts, skip=nonface)
-    tracks = cover_leading(tracks, meta.fps, cuts, skip=nonface)
+    tracks = cover_leading(tracks, meta.fps, cuts, skip=nonface | flagged)
+    tracks = drop_unlike_holds(tracks, hold_features(job_dir / "normalized.mp4", tracks), meta.fps)
+    tracks = trim_suspect_tails(tracks, meta.fps, flagged)
+    tracks = [t for t in tracks if t.frames]
     bucket = bucket_ids([t.id for t in tracks], suspects, person_states)
     atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, bucket, nonface))
     atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps, (meta.width, meta.height), meta.frame_count, cuts, suspects, likely))

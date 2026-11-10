@@ -40,3 +40,11 @@ def test_no_other_face_on_screen_stays_masked():
 def test_unmasked_boxes_are_not_a_size_reference():
     tiny = mk("t3", range(0, 20), 10)  # already nonface: must not shrink the reference
     assert ids([mk("t1", range(0, 20), 150), tiny, mk("t9", [5], 500)], {"t9", "t3"}, skip={"t3"}) == set()
+
+
+def test_one_hit_flagged_is_nonface():
+    from mosaic_worker.jobs import one_hit_suspect_ids
+    one = mk("t8", [5], 100)
+    two = mk("t9", [5, 6], 100)
+    assert one_hit_suspect_ids([one, two, FACES[0]], {"t8", "t9", "t1"}) == {"t8"}
+    assert one_hit_suspect_ids([one], set()) == set()
