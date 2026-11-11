@@ -1,6 +1,7 @@
 """Analyze a job: normalize -> detect -> track -> thumbnails -> tracks.json / review.json."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -185,7 +186,7 @@ def detect_and_track(video: Path, meta: Meta, detector: FaceDetector, progress: 
     return tracks, thumbs, suspects, scene.cuts, linked_person_states(groups, person.state)
 
 
-def build_tracks_doc(meta: Meta, tracks, thumb_info: dict, suspects: set[str] | frozenset = frozenset(), nonface: set[str] | frozenset = frozenset()) -> dict:
+def build_tracks_doc(meta: Meta, tracks, thumb_info: dict, suspects: set[str] | frozenset = frozenset(), nonface: set[str] | frozenset = frozenset(), timing: dict | None = None) -> dict:
     docs = []
     for t in tracks:
         info = thumb_info.get(t.id, {"thumb": None, "samples": []})
@@ -202,17 +203,27 @@ def build_tracks_doc(meta: Meta, tracks, thumb_info: dict, suspects: set[str] | 
                 "nonface": t.id in nonface,
             }
         )
-    return {
+    doc = {
         "version": 1,
         "fps": meta.fps, "width": meta.width, "height": meta.height, "frameCount": meta.frame_count,
         "render_config": dict(RENDER_CONFIG),
         "tracks": docs,
     }
+    if timing is not None:
+        doc["timing"] = timing
+    return doc
 
 
-def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetector | None = None, meta: Meta | None = None, person_detector=None) -> None:
-    """Detect/track an already normalized job. Writes tracks.json, review.json and thumbs/."""
+def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetector | None = None, meta: Meta | None = None, person_detector=None, normalize_sec: float | None = None, started_at: float | None = None) -> None:
+    """Detect/track an already normalized job. Writes tracks.json, review.json and thumbs/.
+
+    analyzeSec runs from `started_at` (a time.monotonic() value; run_analyze passes the moment normalize
+    finished so model loading is included, default = start of this call) to just before tracks.json is written.
+    """
     from .normalize import load_meta
+
+    if started_at is None:
+        started_at = time.monotonic()
 
     job_dir = Path(job_dir)
     meta = meta or load_meta(job_dir)
@@ -232,7 +243,13 @@ def analyze(job_dir: Path, progress: Progress | None = None, detector: FaceDetec
     tracks = trim_suspect_tails(tracks, meta.fps, flagged)
     tracks = [t for t in tracks if t.frames]
     bucket = bucket_ids([t.id for t in tracks], suspects, person_states)
-    atomic_write_json(job_dir / "tracks.json", build_tracks_doc(meta, tracks, info, bucket, nonface))
+    atomic_write_json(job_dir / "tracks.json", build_tracks_doc(
+        meta, tracks, info, bucket, nonface,
+        timing={
+            "normalizeSec": None if normalize_sec is None else round(normalize_sec, 1),
+            "analyzeSec": round(time.monotonic() - started_at, 1),
+        },
+    ))
     atomic_write_json(job_dir / "review.json", build_review(tracks, meta.fps, (meta.width, meta.height), meta.frame_count, cuts, suspects, likely))
     seed_unmasked(job_dir, nonface - crossing_masked(tracks, nonface))
     if progress:
@@ -243,8 +260,11 @@ def run_analyze(job_dir: Path, progress: Progress, detector: FaceDetector | None
     """Full analyze step as the queue runs it: normalize then analyze."""
     job_dir = Path(job_dir)
     progress("normalizing", 0)
+    t0 = time.monotonic()
     meta = normalize(find_original(job_dir), job_dir)
+    started_at = time.monotonic()
+    normalize_sec = started_at - t0
     progress("analyzing", 0)
     if detector is None and detector_factory is not None:
         detector = detector_factory()  # model is loaded only once normalization succeeded
-    analyze(job_dir, progress, detector=detector, meta=meta)
+    analyze(job_dir, progress, detector=detector, meta=meta, normalize_sec=normalize_sec, started_at=started_at)

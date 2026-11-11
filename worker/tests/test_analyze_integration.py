@@ -17,6 +17,7 @@ def test_moving_face_is_tracked(tmp_path, face_image, model_path):
 
     doc = json.loads((tmp_path / "tracks.json").read_text())
     assert doc["version"] == 1 and doc["frameCount"] == meta.frame_count
+    assert doc["timing"]["analyzeSec"] >= 0 and doc["timing"]["normalizeSec"] is None
     assert len(doc["tracks"]) >= 1
     covered = set()
     for t in doc["tracks"]:
@@ -47,6 +48,7 @@ def test_empty_background_has_no_tracks(tmp_path, model_path):
     jobs.run_analyze(tmp_path, lambda s, p: None, detector=FaceDetector(model_path))
     doc = json.loads((tmp_path / "tracks.json").read_text())
     assert doc["tracks"] == []
+    assert doc["timing"]["normalizeSec"] >= 0 and doc["timing"]["analyzeSec"] >= 0
     assert json.loads((tmp_path / "review.json").read_text()) == {"items": []}
     assert (tmp_path / "meta.json").exists()
 

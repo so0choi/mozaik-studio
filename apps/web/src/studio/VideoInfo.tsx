@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
-import { formatTime } from '../lib/frames';
+import { formatDuration, formatTime } from '../lib/frames';
+import type { TracksDoc } from '../lib/types';
 
 interface Props {
   filename: string;
@@ -7,6 +8,7 @@ interface Props {
   height: number;
   frameCount: number;
   fps: number;
+  timing?: TracksDoc['timing'];
 }
 
 const ext = (name: string) => {
@@ -23,6 +25,16 @@ function VideoInfoInner(p: Props) {
     ['프레임', `${p.fps}fps`],
     ['타입', ext(p.filename)],
   ];
+  if (p.timing) {
+    const { normalizeSec, analyzeSec } = p.timing;
+    const detect = `검출 ${formatDuration(analyzeSec)}`;
+    rows.push([
+      '처리 시간',
+      normalizeSec == null
+        ? detect
+        : `${formatDuration(normalizeSec + analyzeSec)} (변환 ${formatDuration(normalizeSec)} · ${detect})`,
+    ]);
+  }
   return (
     <section className="bcard vinfo" aria-label="비디오 정보">
       <button type="button" className="vi-toggle" aria-expanded={open} aria-controls="vi-body" onClick={() => setOpen(!open)}>

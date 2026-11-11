@@ -1365,6 +1365,7 @@ export function Studio() {
             height={tracks.height}
             frameCount={tracks.frameCount}
             fps={fps}
+            timing={tracks.timing}
           />
         </aside>
       </main>

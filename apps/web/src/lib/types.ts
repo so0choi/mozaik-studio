@@ -22,6 +22,8 @@ export interface TracksDoc {
   height: number;
   frameCount: number;
   render_config?: Record<string, number>;
+  /** worker: wall-clock seconds spent on conversion and detection (absent on old jobs) */
+  timing?: { normalizeSec: number | null; analyzeSec: number };
   tracks: Track[];
 }
 
