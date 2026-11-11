@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { formatDuration } from '../lib/frames';
+import { formatDuration, formatTime } from '../lib/frames';
 import type { Effect, ManualEdit, ManualState, Person } from '../lib/types';
 import { effectName } from './EffectControls';
 
@@ -19,6 +19,9 @@ interface Props {
   onShowSuspects: (keys: string[]) => void;
   /** move the player to a frame (used by "may not be a face" tiles) */
   onSeekFrame?: (frame: number) => void;
+  /** stable getter of the player's current frame; read only on click */
+  getFrame?: () => number;
+  fps?: number;
   manualList: ManualEdit[];
   manualState: Record<string, ManualState>;
   manualOpen: string | null;
@@ -232,6 +235,8 @@ function TargetListInner(p: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [suspectOpen, setSuspectOpen] = useState(false);
+  // frame the suspect list is narrowed to (null = off)
+  const [sceneFrame, setSceneFrame] = useState<number | null>(null);
   const [autoOpen, setAutoOpen] = useState(true);
   const [manualGroupOpen, setManualGroupOpen] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
@@ -251,7 +256,9 @@ function TargetListInner(p: Props) {
     (!q || x.label.toLowerCase().includes(q)) &&
     (filter === 'all' || (filter === 'shown' ? x.visible : !x.visible));
   const mainShown = main.filter(match);
-  const suspectShown = suspects.filter(match);
+  const suspectShown = suspects.filter(
+    (x) => match(x) && (sceneFrame === null || x.segments.some(([a, b]) => a <= sceneFrame && sceneFrame <= b)),
+  );
   const count = p.people.length;
   const unmaskKeys = suspectShown.filter((x) => !x.visible && isChecked(x)).map((x) => x.key);
 
@@ -421,8 +428,20 @@ function TargetListInner(p: Props) {
             {suspectOpen && (
               <div id="suspect-body" className="tg-body">
                 <p className="pl-gnote">음식, 손, 무늬 등 얼굴이 아닐 수 있는 영역입니다. 가능성이 높은 것은 분석이 끝날 때 자동으로 가림 해제했습니다. 진짜 얼굴이면 타일을 누르고 효과를 고르면 다시 가려집니다. 나머지도 얼굴이 아니면 체크해서 한 번에 가림 해제하세요.</p>
+                {p.getFrame && (
+                  <button
+                    type="button"
+                    className={`pl-chip scene${sceneFrame !== null ? ' on' : ''}`}
+                    data-testid="scene-filter"
+                    aria-pressed={sceneFrame !== null}
+                    title="지금 화면에 박스가 있는 항목만 보여 줍니다"
+                    onClick={() => setSceneFrame(sceneFrame === null ? p.getFrame!() : null)}
+                  >
+                    {sceneFrame === null ? '이 장면만' : `${formatTime(sceneFrame / (p.fps || 30))} 장면 ✕`}
+                  </button>
+                )}
                 {suspectShown.length === 0 ? (
-                  <p className="pl-empty">조건에 맞는 인물이 없습니다.</p>
+                  <p className="pl-empty">{sceneFrame !== null ? '이 장면에 해당하는 항목이 없습니다.' : '조건에 맞는 인물이 없습니다.'}</p>
                 ) : (
                   <ul className="stiles">
                     {suspectShown.map((x) => (

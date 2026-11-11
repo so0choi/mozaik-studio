@@ -13,9 +13,10 @@ interface Props {
   onUnmask: (id: string) => void;
 }
 
-const X_SIZE = 22;
+const BTN_W = 84;
+const BTN_H = 24;
 
-/** Click a masked area to select it; the X on its corner unmasks just that piece. */
+/** Click a masked area to select it; the labeled button under it unmasks just that piece. */
 export function MaskPicker({ rect, srcW, srcH, regions, selectedId, onSelect, onUnmask }: Props) {
   const layer = useRef<HTMLDivElement>(null);
 
@@ -36,11 +37,10 @@ export function MaskPicker({ rect, srcW, srcH, regions, selectedId, onSelect, on
     const sx = rect.w / srcW;
     const sy = rect.h / srcH;
     outline = { left: sel.box[0] * sx, top: sel.box[1] * sy, width: sel.box[2] * sx, height: sel.box[3] * sy };
-    const half = X_SIZE / 2;
-    xPos = {
-      left: Math.min(Math.max(outline.left + outline.width - half, 0), Math.max(rect.w - X_SIZE, 0)),
-      top: Math.min(Math.max(outline.top - half, 0), Math.max(rect.h - X_SIZE, 0)),
-    };
+    const maxLeft = Math.max(rect.w - BTN_W, 0);
+    const below = outline.top + outline.height + 4;
+    const top = below + BTN_H > rect.h ? Math.max(outline.top - BTN_H - 4, 0) : below;
+    xPos = { left: Math.min(Math.max(outline.left, 0), maxLeft), top };
   }
 
   return (
@@ -59,14 +59,14 @@ export function MaskPicker({ rect, srcW, srcH, regions, selectedId, onSelect, on
             className="mp-x"
             data-testid="unmask-x"
             aria-label="가림 해제"
-            title="가림 해제"
+            title="가림 해제 (Delete)"
             style={xPos}
             onClick={(e) => {
               e.stopPropagation();
               onUnmask(sel.id);
             }}
           >
-            ×
+            × 가림 해제
           </button>
         </>
       )}

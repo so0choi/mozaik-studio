@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Region } from '../lib/types';
 import { MaskPicker } from './MaskPicker';
@@ -32,7 +32,14 @@ describe('MaskPicker', () => {
   it('shows outline and X for the selected region only', () => {
     setup({ selectedId: 't1' });
     expect(screen.getByTestId('mask-outline')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '가림 해제' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '가림 해제' })).toHaveTextContent('가림 해제');
+  });
+  it('places the button below the outline bottom-left, above it when it would overflow', () => {
+    setup({ selectedId: 't1' });
+    expect(screen.getByTestId('unmask-x')).toHaveStyle({ left: '100px', top: '164px' });
+    cleanup();
+    render(<MaskPicker rect={rect} srcW={640} srcH={360} regions={[{ ...region, box: [100, 300, 60, 58] }]} selectedId="t1" onSelect={() => undefined} onUnmask={() => undefined} />);
+    expect(screen.getByTestId('unmask-x')).toHaveStyle({ left: '100px', top: '272px' });
   });
   it('renders nothing for a selected id missing from this frame', () => {
     setup({ selectedId: 'zz' });
